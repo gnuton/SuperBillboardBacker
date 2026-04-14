@@ -11,7 +11,7 @@ A sophisticated TypeScript library and interactive tool designed for game artist
 - **Developer Friendly**: Written in modern TypeScript with full ESM support.
 
 ## Demo
-Check out the interactive tool: [Coming Soon](https://gnuton.github.io/SuperBillboardBacker/)
+Check out the interactive tool: [this is the demo](https://gnuton.github.io/SuperBillboardBacker/)
 
 ## Quick Start
 ```bash
