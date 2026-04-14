@@ -15,11 +15,11 @@ Check out the interactive tool: [this is the demo](https://gnuton.github.io/Supe
 
 ## Quick Start
 ```bash
-npm install super-billboard-backer
+npm install @gnuton/super-billboard-backer
 ```
 
 ```typescript
-import { SpriteBaker } from 'super-billboard-backer';
+import { SpriteBaker } from '@gnuton/super-billboard-backer';
 
 const baker = new SpriteBaker();
 const result = await baker.bake({
@@ -39,8 +39,8 @@ The library provides a standalone, embeddable UI class called `BillboardBackerUI
 ### Usage
 
 ```typescript
-import { BillboardBackerUI } from 'super-billboard-backer';
-import 'super-billboard-backer/dist/ui/BillboardBackerUI.css';
+import { BillboardBackerUI } from '@gnuton/super-billboard-backer';
+import '@gnuton/super-billboard-backer/dist/ui/BillboardBackerUI.css';
 
 const container = document.getElementById('my-container');
 const ui = new BillboardBackerUI({
