@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { SpriteBaker } from '../../src/index';
+import { calculateAutoDistance } from '../../src/math';
 
 const App = () => {
   const [frameCount, setFrameCount] = useState(16);
@@ -13,6 +14,8 @@ const App = () => {
   const [isBaking, setIsBaking] = useState(false);
   const [bakedImage, setBakedImage] = useState<string | null>(null);
   const [firstFramePreview, setFirstFramePreview] = useState<string | null>(null);
+  const [isAutoDistance, setIsAutoDistance] = useState(true);
+  const [distanceMode, setDistanceMode] = useState<'best-fit' | '360-n'>('best-fit');
   
   // Refs for animation loop (avoiding stale closures)
   const paramsRef = useRef({ distance, elevation, frameCount });
@@ -170,6 +173,18 @@ const App = () => {
     return () => clearTimeout(timer);
   }, [distance, elevation, resolution, frameCount]);
 
+  // Handle Auto Distance calculation
+  useEffect(() => {
+    if (isAutoDistance && previewModelRef.current) {
+      if (distanceMode === '360-n') {
+        setDistance(360 / frameCount);
+      } else {
+        const autoD = calculateAutoDistance(previewModelRef.current);
+        setDistance(autoD);
+      }
+    }
+  }, [isAutoDistance, distanceMode, elevation, frameCount]); 
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -183,12 +198,16 @@ const App = () => {
       previewModelRef.current = gltf.scene;
       sceneRef.current.add(gltf.scene);
       
-      // Focus camera on model
-      const box = new THREE.Box3().setFromObject(gltf.scene);
-      const center = box.getCenter(new THREE.Vector3());
-      const size = box.getSize(new THREE.Vector3());
-      const maxDim = Math.max(size.x, size.y, size.z);
-      setDistance(maxDim * 2.5);
+      // Focus camera on model via auto-distance if enabled
+      if (isAutoDistance) {
+        const autoD = calculateAutoDistance(gltf.scene);
+        setDistance(autoD);
+      } else {
+        const box = new THREE.Box3().setFromObject(gltf.scene);
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        setDistance(maxDim * 2.5);
+      }
     });
   };
 
@@ -233,11 +252,37 @@ const App = () => {
         </div>
 
         <div className="control-group">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <input 
+              type="checkbox" 
+              checked={isAutoDistance} 
+              onChange={(e) => setIsAutoDistance(e.target.checked)} 
+            />
+            Auto Distance
+          </label>
+          <div className="help-text">Automatically calculate the best level of zoom for the object.</div>
+          
+          {isAutoDistance && (
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.7rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', cursor: 'pointer', color: distanceMode === 'best-fit' ? '#3b82f6' : '#666' }}>
+                <input type="radio" name="distMode" checked={distanceMode === 'best-fit'} onChange={() => setDistanceMode('best-fit')} />
+                Best Fit
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', cursor: 'pointer', color: distanceMode === '360-n' ? '#3b82f6' : '#666' }}>
+                <input type="radio" name="distMode" checked={distanceMode === '360-n'} onChange={() => setDistanceMode('360-n')} />
+                360 / N
+              </label>
+            </div>
+          )}
+        </div>
+
+        <div className="control-group" style={{ opacity: isAutoDistance ? 0.5 : 1, pointerEvents: isAutoDistance ? 'none' : 'auto' }}>
           <label>Distance: {distance.toFixed(1)}</label>
           <div className="help-text">Camera orbit radius. Zoom in for detail or out to fit the whole model.</div>
           <input 
-            type="range" min="1" max="20" step="0.1" 
+            type="range" min="1" max="100" step="0.1" 
             value={distance} onChange={(e) => setDistance(parseFloat(e.target.value))} 
+            disabled={isAutoDistance}
           />
         </div>
 
