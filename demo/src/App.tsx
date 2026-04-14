@@ -185,12 +185,14 @@ const App = () => {
         <h1 className="title">SuperBillboardBacker</h1>
         
         <div className="control-group">
-          <label>Load 3D Model (.glb, .gltf)</label>
+          <label>Load 3D Model</label>
+          <div className="help-text">Import a .glb or .gltf file. The viewport will center on your model automatically.</div>
           <input type="file" onChange={handleFileUpload} accept=".glb,.gltf" />
         </div>
 
         <div className="control-group">
           <label>n of cameras: {frameCount}</label>
+          <div className="help-text">Total frames to capture around the orbit. Higher values mean smoother rotations.</div>
           <input 
             type="range" min="4" max="64" step="1" 
             value={frameCount} onChange={(e) => setFrameCount(parseInt(e.target.value))} 
@@ -199,6 +201,7 @@ const App = () => {
 
         <div className="control-group">
           <label>Distance: {distance.toFixed(1)}</label>
+          <div className="help-text">Camera orbit radius. Zoom in for detail or out to fit the whole model.</div>
           <input 
             type="range" min="1" max="20" step="0.1" 
             value={distance} onChange={(e) => setDistance(parseFloat(e.target.value))} 
@@ -207,6 +210,7 @@ const App = () => {
 
         <div className="control-group">
           <label>Elevation: {elevation}&deg;</label>
+          <div className="help-text">The vertical angle. 0&deg; is side-on, 90&deg; is directly from above.</div>
           <input 
             type="range" min="-90" max="90" step="1" 
             value={elevation} onChange={(e) => setElevation(parseInt(e.target.value))} 
@@ -215,6 +219,7 @@ const App = () => {
 
         <div className="control-group">
           <label>Padding: {padding}px</label>
+          <div className="help-text">Pixel gap between frames to prevent texture bleeding in shaders.</div>
           <input 
             type="range" min="0" max="64" step="1" 
             value={padding} onChange={(e) => setPadding(parseInt(e.target.value))} 
@@ -223,6 +228,7 @@ const App = () => {
 
         <div className="control-group">
           <label>Resolution: {resolution}px</label>
+          <div className="help-text">The output width/height of each capture in the final sprite sheet.</div>
           <select value={resolution} onChange={(e) => setResolution(parseInt(e.target.value))}>
             <option value={64}>64x64</option>
             <option value={128}>128x128</option>
