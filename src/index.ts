@@ -10,6 +10,8 @@ export interface BakeOptions {
   resolution?: number; // Output size of each frame (e.g. 256)
   padding?: number; // Pixel gap between frames
   transparent?: boolean;
+  includeTop?: boolean;
+  includeBottom?: boolean;
 }
 
 export class SpriteBaker {
@@ -39,7 +41,9 @@ export class SpriteBaker {
       elevation = 30,
       resolution = 256,
       padding = 0,
-      transparent = true
+      transparent = true,
+      includeTop = false,
+      includeBottom = false
     } = options;
 
     let object: THREE.Object3D;
@@ -61,7 +65,8 @@ export class SpriteBaker {
     this.renderer.setSize(resolution, resolution);
     this.renderer.setClearAlpha(transparent ? 0 : 1);
 
-    const { rows, cols } = calculateGrid(frameCount);
+    const totalFrames = frameCount + (includeTop ? 1 : 0) + (includeBottom ? 1 : 0);
+    const { rows, cols } = calculateGrid(totalFrames);
     const finalCanvas = document.createElement('canvas');
     finalCanvas.width = cols * resolution + (cols - 1) * padding;
     finalCanvas.height = rows * resolution + (rows - 1) * padding;
@@ -69,13 +74,21 @@ export class SpriteBaker {
 
     const elevationRad = THREE.MathUtils.degToRad(elevation);
 
-    for (let i = 0; i < frameCount; i++) {
-      const azimuthRad = (i / frameCount) * Math.PI * 2;
-      const pos = calculateOrbitalPosition(distance, azimuthRad, elevationRad, center);
+    for (let i = 0; i < totalFrames; i++) {
+      if (i < frameCount) {
+        // Standard orbital camera
+        const azimuthRad = (i / frameCount) * Math.PI * 2;
+        const pos = calculateOrbitalPosition(distance, azimuthRad, elevationRad, center);
+        this.camera.position.set(pos.x, pos.y, pos.z);
+      } else if (includeTop && i === frameCount) {
+        // Top camera
+        this.camera.position.set(center.x, center.y + distance, center.z);
+      } else if (includeBottom) {
+        // Bottom camera (always the last one if both are present)
+        this.camera.position.set(center.x, center.y - distance, center.z);
+      }
       
-      this.camera.position.set(pos.x, pos.y, pos.z);
       this.camera.lookAt(center);
-      
       this.renderer.render(this.scene, this.camera);
       
       const col = i % cols;
@@ -103,7 +116,9 @@ export class SpriteBaker {
       distance = 5,
       elevation = 30,
       resolution = 256,
-      transparent = true
+      transparent = true,
+      includeTop = false,
+      includeBottom = false
     } = options;
 
     let object: THREE.Object3D;
@@ -121,11 +136,17 @@ export class SpriteBaker {
     const box = new THREE.Box3().setFromObject(object);
     const center = box.getCenter(new THREE.Vector3());
     const elevationRad = THREE.MathUtils.degToRad(elevation);
-    const azimuthRad = (index / options.frameCount) * Math.PI * 2;
     
-    const pos = calculateOrbitalPosition(distance, azimuthRad, elevationRad, center);
+    if (index < options.frameCount) {
+      const azimuthRad = (index / options.frameCount) * Math.PI * 2;
+      const pos = calculateOrbitalPosition(distance, azimuthRad, elevationRad, center);
+      this.camera.position.set(pos.x, pos.y, pos.z);
+    } else if (includeTop && index === options.frameCount) {
+      this.camera.position.set(center.x, center.y + distance, center.z);
+    } else {
+      this.camera.position.set(center.x, center.y - distance, center.z);
+    }
     
-    this.camera.position.set(pos.x, pos.y, pos.z);
     this.camera.lookAt(center);
     
     this.renderer.render(this.scene, this.camera);

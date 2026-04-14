@@ -14,15 +14,17 @@ const App = () => {
   const [isBaking, setIsBaking] = useState(false);
   const [bakedImage, setBakedImage] = useState<string | null>(null);
   const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
+  const [includeTop, setIncludeTop] = useState(false);
+  const [includeBottom, setIncludeBottom] = useState(false);
   const [firstFramePreview, setFirstFramePreview] = useState<string | null>(null);
   const [isAutoDistance, setIsAutoDistance] = useState(true);
   const [distanceMode, setDistanceMode] = useState<'best-fit' | '360-n'>('best-fit');
   
   // Refs for animation loop (avoiding stale closures)
-  const paramsRef = useRef({ distance, elevation, frameCount });
+  const paramsRef = useRef({ distance, elevation, frameCount, includeTop, includeBottom });
   useEffect(() => {
-    paramsRef.current = { distance, elevation, frameCount };
-  }, [distance, elevation, frameCount]);
+    paramsRef.current = { distance, elevation, frameCount, includeTop, includeBottom };
+  }, [distance, elevation, frameCount, includeTop, includeBottom]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const bakerRef = useRef<SpriteBaker | null>(null);
@@ -90,7 +92,7 @@ const App = () => {
       }
 
       // Update camera markers
-      const { distance: d2, elevation: e2, frameCount: fc2 } = paramsRef.current;
+      const { distance: d2, elevation: e2, frameCount: fc2, includeTop: it, includeBottom: ib } = paramsRef.current;
       const radiusAtElevationMk = d2 * Math.cos(THREE.MathUtils.degToRad(e2));
       const elevationRadMk = THREE.MathUtils.degToRad(e2);
       const elevationYMk = d2 * Math.sin(elevationRadMk);
@@ -99,12 +101,21 @@ const App = () => {
       const centerMk = boxMk.getCenter(new THREE.Vector3());
 
       markersGroupRef.current.children.forEach((child, i) => {
-        const azimuthRad = (i / fc2) * Math.PI * 2;
-        child.position.set(
-          centerMk.x + radiusAtElevationMk * Math.cos(azimuthRad),
-          centerMk.y + elevationYMk,
-          centerMk.z + radiusAtElevationMk * Math.sin(azimuthRad)
-        );
+        if (i < fc2) {
+          const azimuthRad = (i / fc2) * Math.PI * 2;
+          child.position.set(
+            centerMk.x + radiusAtElevationMk * Math.cos(azimuthRad),
+            centerMk.y + elevationYMk,
+            centerMk.z + radiusAtElevationMk * Math.sin(azimuthRad)
+          );
+        } else if (it && i === fc2) {
+          // Top pole
+          child.position.set(centerMk.x, centerMk.y + d2, centerMk.z);
+        } else {
+          // Bottom pole
+          child.position.set(centerMk.x, centerMk.y - d2, centerMk.z);
+        }
+        
         child.lookAt(centerMk);
 
         // Highlight current camera
@@ -135,7 +146,7 @@ const App = () => {
     };
   }, []);
 
-  // Sync camera markers when frameCount changes
+  // Sync camera markers when frameCount/poles changes
   useEffect(() => {
     const group = markersGroupRef.current;
     
@@ -164,7 +175,9 @@ const App = () => {
       return new THREE.CanvasTexture(canvas);
     };
 
-    for (let i = 0; i < frameCount; i++) {
+    const totalFrames = frameCount + (includeTop ? 1 : 0) + (includeBottom ? 1 : 0);
+
+    for (let i = 0; i < totalFrames; i++) {
       const markerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
       const marker = new THREE.Mesh(markerGeom, markerMat);
       
@@ -177,7 +190,7 @@ const App = () => {
 
       group.add(marker);
     }
-  }, [frameCount]);
+  }, [frameCount, includeTop, includeBottom]);
 
   // Debounced real-time preview of the first frame
   useEffect(() => {
@@ -192,6 +205,8 @@ const App = () => {
           distance,
           elevation,
           resolution,
+          includeTop,
+          includeBottom
         }, currentCameraIndex);
         setFirstFramePreview(url);
       } catch (err) {
@@ -200,7 +215,7 @@ const App = () => {
     }, 150); // 150ms debounce
 
     return () => clearTimeout(timer);
-  }, [distance, elevation, resolution, frameCount, currentCameraIndex]);
+  }, [distance, elevation, resolution, frameCount, currentCameraIndex, includeTop, includeBottom]);
 
   // Handle Auto Distance calculation
   useEffect(() => {
@@ -252,6 +267,8 @@ const App = () => {
         elevation,
         resolution,
         padding,
+        includeTop,
+        includeBottom
       });
       setBakedImage(dataUrl);
     } catch (err) {
@@ -279,6 +296,16 @@ const App = () => {
             type="range" min="4" max="64" step="1" 
             value={frameCount} onChange={(e) => setFrameCount(parseInt(e.target.value))} 
           />
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', textTransform: 'none', color: '#ccc' }}>
+              <input type="checkbox" checked={includeTop} onChange={(e) => setIncludeTop(e.target.checked)} />
+              Incl. Top
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', textTransform: 'none', color: '#ccc' }}>
+              <input type="checkbox" checked={includeBottom} onChange={(e) => setIncludeBottom(e.target.checked)} />
+              Incl. Bottom
+            </label>
+          </div>
         </div>
 
         <div className="control-group">
@@ -362,7 +389,7 @@ const App = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
           <h2 className="title" style={{ fontSize: '1rem' }}>Camera Preview</h2>
           <div style={{ fontSize: '0.7rem', color: '#888', fontWeight: 600 }}>
-            {currentCameraIndex + 1} / {frameCount}
+            {currentCameraIndex + 1} / {frameCount + (includeTop ? 1 : 0) + (includeBottom ? 1 : 0)}
           </div>
         </div>
         
@@ -373,7 +400,10 @@ const App = () => {
             <div className="preview-nav-wrapper">
               <button 
                 className="nav-arrow left" 
-                onClick={() => setCurrentCameraIndex((prev) => (prev - 1 + frameCount) % frameCount)}
+                onClick={() => {
+                  const total = frameCount + (includeTop ? 1 : 0) + (includeBottom ? 1 : 0);
+                  setCurrentCameraIndex((prev) => (prev - 1 + total) % total);
+                }}
               >
                 &lsaquo;
               </button>
@@ -382,7 +412,10 @@ const App = () => {
               
               <button 
                 className="nav-arrow right" 
-                onClick={() => setCurrentCameraIndex((prev) => (prev + 1) % frameCount)}
+                onClick={() => {
+                  const total = frameCount + (includeTop ? 1 : 0) + (includeBottom ? 1 : 0);
+                  setCurrentCameraIndex((prev) => (prev + 1) % total);
+                }}
               >
                 &rsaquo;
               </button>
