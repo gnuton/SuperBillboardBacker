@@ -1,0 +1,1 @@
+- [x] Implement visual best-fit in math.ts\n- [x] Implement optimal distance calculation in SpriteBaker (index.ts)\n- [x] Update UI with Margin slider and best-fit logic (BillboardBackerUI.ts)\n- [x] Style the new UI elements (BillboardBackerUI.css)\n- [x] Verify with tests

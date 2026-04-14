@@ -68,3 +68,53 @@ export function calculateAutoDistance(
   
   return distance;
 }
+
+/**
+ * Analyzes pixel alpha data to find the tightest bounding box of non-transparent pixels.
+ * Uses a threshold to skip semi-transparent artifacts if necessary.
+ * 
+ * @returns [minX, maxX, minY, maxY] in 0-1 range
+ */
+export function getAlphaBoundingBox(pixels: Uint8Array | Uint8ClampedArray, width: number, height: number): [number, number, number, number] {
+  let minX = width, maxX = 0, minY = height, maxY = 0;
+  let found = false;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const alpha = pixels[(y * width + x) * 4 + 3];
+      if (alpha > 5) { // Threshold to ignore near-transparent noise
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        found = true;
+      }
+    }
+  }
+
+  if (!found) return [0, 1, 0, 1]; // Fallback to full view
+
+  return [
+    minX / width,
+    maxX / width,
+    minY / height,
+    maxY / height
+  ];
+}
+
+/**
+ * Calculates a relative scale factor to fit the given bounds into a square viewport.
+ */
+export function getFittingScale(bounds: [number, number, number, number], margin: number = 0.05): number {
+  const [minX, maxX, minY, maxY] = bounds;
+  const contentWidth = maxX - minX;
+  const contentHeight = maxY - minY;
+  
+  if (contentWidth <= 0 || contentHeight <= 0) return 1.0;
+
+  // We want the larger dimension to fill (1.0 - margin * 2)
+  const targetSize = 1.0 - (margin * 2);
+  const currentSize = Math.max(contentWidth, contentHeight);
+  
+  return targetSize / currentSize;
+}

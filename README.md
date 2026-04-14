@@ -23,9 +23,9 @@ import { SpriteBaker } from '@gnuton/super-billboard-backer';
 
 const baker = new SpriteBaker();
 const result = await baker.bake({
-  modelUrl: 'path/to/model.glb',
-  frames: 16,
-  distance: 5,
+  model: 'path/to/model.glb',
+  frameCount: 16,
+  isAutoDistance: true,
   elevation: 30, // Degrees
 });
 

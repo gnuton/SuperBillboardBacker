@@ -16,7 +16,7 @@ export class BillboardBackerUI extends EventTarget {
   private container: HTMLElement;
   private baker: SpriteBaker;
   private options: BillboardBackerUIOptions;
-  private params: Required<BakeOptions> & { isAutoDistance: boolean, distanceMode: 'best-fit' | '360-n' };
+  private params: Required<BakeOptions>;
   
   // DOM Elements
   private uiContainer!: HTMLDivElement;
@@ -24,6 +24,8 @@ export class BillboardBackerUI extends EventTarget {
   private previewImageEl!: HTMLImageElement;
   private bakedImageEl!: HTMLImageElement;
   private bakeBtn!: HTMLButtonElement;
+  private viewportOverlay!: HTMLDivElement;
+  private previewOverlay!: HTMLDivElement;
   private currentCameraIndex: number = 0;
 
   // Three.js Preview
@@ -54,7 +56,7 @@ export class BillboardBackerUI extends EventTarget {
       includeTop: false,
       includeBottom: false,
       isAutoDistance: true,
-      distanceMode: 'best-fit',
+      margin: 0.1,
       ...options.initialParams
     };
 
@@ -136,14 +138,19 @@ export class BillboardBackerUI extends EventTarget {
 
       <div class="sbb-control-group">
         <label class="sbb-label" style="text-transform:none">
-          <input type="checkbox" class="sbb-check-auto" ${this.params.isAutoDistance ? 'checked' : ''}> Auto Distance
+          <input type="checkbox" class="sbb-check-auto" ${this.params.isAutoDistance ? 'checked' : ''}> Auto Distance (Visual Fit)
         </label>
-        <div class="sbb-help-text">Calculates best fit automatically.</div>
+        <div class="sbb-help-text">Analyzes frame to minimize empty space.</div>
       </div>
 
-      <div class="sbb-control-group sbb-dist-manual" style="opacity: ${this.params.isAutoDistance ? 0.5 : 1}; pointer-events: ${this.params.isAutoDistance ? 'none' : 'auto'}">
+      <div class="sbb-control-group sbb-margin-group" style="display: ${this.params.isAutoDistance ? 'block' : 'none'}">
+        <label class="sbb-label">Margin: <span class="sbb-val-margin">${Math.round(this.params.margin * 100)}</span>%</label>
+        <input type="range" class="sbb-input sbb-range-margin" min="0" max="0.5" step="0.01" value="${this.params.margin}" />
+      </div>
+
+      <div class="sbb-control-group sbb-dist-manual" style="display: ${this.params.isAutoDistance ? 'none' : 'block'}">
         <label class="sbb-label">Distance: <span class="sbb-val-distance">${this.params.distance.toFixed(1)}</span></label>
-        <input type="range" class="sbb-input sbb-range-distance" min="1" max="100" step="0.1" value="${this.params.distance}" />
+        <input type="range" class="sbb-input sbb-range-distance" min="0.1" max="50" step="0.1" value="${this.params.distance}" />
       </div>
 
       <div class="sbb-control-group">
@@ -206,6 +213,16 @@ export class BillboardBackerUI extends EventTarget {
     `;
     this.previewImageEl = results.querySelector('.sbb-preview-image') as HTMLImageElement;
     this.bakedImageEl = results.querySelector('.sbb-baked-image') as HTMLImageElement;
+
+    // Viewport Overlay
+    this.viewportOverlay = this.createOverlay('Measuring Model...');
+    this.viewportEl.appendChild(this.viewportOverlay);
+
+    // Preview Overlay
+    this.previewOverlay = this.createOverlay('Capturing...');
+    const previewNav = results.querySelector('.sbb-preview-nav') as HTMLElement;
+    previewNav.appendChild(this.previewOverlay);
+
     this.uiContainer.appendChild(results);
 
     // Event Listeners
@@ -233,10 +250,11 @@ export class BillboardBackerUI extends EventTarget {
     });
 
     listen('.sbb-check-auto', 'change', (e: any) => {
-      this.params.isAutoDistance = e.target.checked;
-      this.updateAutoDistance();
-      this.updateControlsUI();
-      this.refreshSighting();
+      this.setParams({ isAutoDistance: e.target.checked });
+    });
+
+    listen('.sbb-range-margin', 'input', (e: any) => {
+      this.setParams({ margin: parseFloat(e.target.value) });
     });
 
     listen('.sbb-range-distance', 'input', (e: any) => {
@@ -322,10 +340,46 @@ export class BillboardBackerUI extends EventTarget {
     this.dispatchEvent(new CustomEvent('change', { detail: { type: 'model', model } }));
   }
 
-  private updateAutoDistance() {
+  private async updateAutoDistance() {
     if (!this.previewModel || !this.params.isAutoDistance) return;
-    this.params.distance = calculateAutoDistance(this.previewModel);
-    this.updateControlsUI();
+    
+    this.setLoading(this.viewportOverlay, true, 'Analyzing Layout...');
+    
+    try {
+      const optimal = await this.baker.findOptimalDistance({
+        ...this.params,
+        model: this.previewModel.clone()
+      }, this.currentCameraIndex, this.params.margin);
+      
+      this.params.distance = optimal;
+      this.updateControlsUI();
+    } catch (err) {
+      console.error('Auto distance failed', err);
+    } finally {
+      this.setLoading(this.viewportOverlay, false);
+    }
+  }
+
+  private createOverlay(text: string): HTMLDivElement {
+    const overlay = document.createElement('div');
+    overlay.className = 'sbb-overlay';
+    overlay.innerHTML = `
+      <div class="sbb-spinner"></div>
+      <div class="sbb-loading-text">${text}</div>
+    `;
+    return overlay;
+  }
+
+  private setLoading(overlay: HTMLDivElement, loading: boolean, text?: string) {
+    if (loading) {
+      overlay.classList.add('visible');
+      if (text) {
+        const textEl = overlay.querySelector('.sbb-loading-text');
+        if (textEl) textEl.textContent = text;
+      }
+    } else {
+      overlay.classList.remove('visible');
+    }
   }
 
   public setParams(params: Partial<BakeOptions>) {
@@ -370,11 +424,14 @@ export class BillboardBackerUI extends EventTarget {
     setVal('.sbb-range-padding', this.params.padding);
     setText('.sbb-val-padding', this.params.padding);
 
+    setVal('.sbb-range-margin', this.params.margin);
+    setText('.sbb-val-margin', Math.round(this.params.margin * 100));
+
+    const marginGroup = this.uiContainer.querySelector('.sbb-margin-group') as HTMLElement;
+    if (marginGroup) marginGroup.style.display = this.params.isAutoDistance ? 'block' : 'none';
+
     const distGroup = this.uiContainer.querySelector('.sbb-dist-manual') as HTMLElement;
-    if (distGroup) {
-      distGroup.style.opacity = this.params.isAutoDistance ? '0.5' : '1';
-      distGroup.style.pointerEvents = this.params.isAutoDistance ? 'none' : 'auto';
-    }
+    if (distGroup) distGroup.style.display = this.params.isAutoDistance ? 'none' : 'block';
   }
 
   private updateMarkers() {
@@ -459,6 +516,7 @@ export class BillboardBackerUI extends EventTarget {
     if (!this.previewModel) return;
     clearTimeout(this.sightingTimer);
     this.sightingTimer = setTimeout(async () => {
+      this.setLoading(this.previewOverlay, true, 'Capturing...');
       try {
         const url = await this.baker.captureFrame({
           ...this.params,
@@ -467,6 +525,8 @@ export class BillboardBackerUI extends EventTarget {
         this.previewImageEl.src = url;
       } catch (err) {
         console.error('Sighting failed', err);
+      } finally {
+        this.setLoading(this.previewOverlay, false);
       }
     }, 150);
   }
@@ -475,6 +535,7 @@ export class BillboardBackerUI extends EventTarget {
     if (!this.previewModel) return '';
     this.bakeBtn.innerText = 'BAKING...';
     this.bakeBtn.disabled = true;
+    this.setLoading(this.previewOverlay, true, `Baking ${this.getTotalFrames()} Frames...`);
     this.dispatchEvent(new CustomEvent('bake-start'));
 
     try {
@@ -496,6 +557,7 @@ export class BillboardBackerUI extends EventTarget {
     } finally {
       this.bakeBtn.innerText = 'BAKE SPRITES';
       this.bakeBtn.disabled = false;
+      this.setLoading(this.previewOverlay, false);
     }
   }
 

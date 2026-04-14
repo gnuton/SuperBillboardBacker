@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { calculateOrbitalPosition, calculateGrid } from './math.js';
+import { calculateOrbitalPosition, calculateGrid, getAlphaBoundingBox, getFittingScale } from './math.js';
 export * from './ui/BillboardBackerUI.js';
 
 export interface BakeOptions {
@@ -13,6 +13,8 @@ export interface BakeOptions {
   transparent?: boolean;
   includeTop?: boolean;
   includeBottom?: boolean;
+  isAutoDistance?: boolean;
+  margin?: number;
 }
 
 export class SpriteBaker {
@@ -155,6 +157,75 @@ export class SpriteBaker {
 
     this.scene.remove(object);
     return dataUrl;
+  }
+
+  /**
+   * Internal helper for fast pixel analysis.
+   * Renders a frame and reads raw pixel data without the overhead of encoding/decoding image formats.
+   */
+  private capturePixelData(options: BakeOptions, index: number = 0): Uint8Array {
+    const {
+      distance = 5,
+      elevation = 30,
+      resolution = 128,
+      includeTop = false,
+    } = options;
+
+    const object = options.model instanceof THREE.Object3D ? options.model : null;
+    if (!object) return new Uint8Array(0);
+
+    this.scene.add(object);
+    this.renderer.setSize(resolution, resolution);
+    this.renderer.setClearAlpha(0);
+
+    const box = new THREE.Box3().setFromObject(object);
+    const center = box.getCenter(new THREE.Vector3());
+    const elevationRad = THREE.MathUtils.degToRad(elevation);
+    
+    if (index < options.frameCount) {
+      const azimuthRad = (index / options.frameCount) * Math.PI * 2;
+      const pos = calculateOrbitalPosition(distance, azimuthRad, elevationRad, center);
+      this.camera.position.set(pos.x, pos.y, pos.z);
+    } else if (includeTop && index === options.frameCount) {
+      this.camera.position.set(center.x, center.y + distance, center.z);
+    } else {
+      this.camera.position.set(center.x, center.y - distance, center.z);
+    }
+    
+    this.camera.lookAt(center);
+    this.renderer.render(this.scene, this.camera);
+    
+    // Read pixels from the current frame buffer
+    const pixels = new Uint8Array(resolution * resolution * 4);
+    const gl = this.renderer.getContext();
+    gl.readPixels(0, 0, resolution, resolution, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+    this.scene.remove(object);
+    return pixels;
+  }
+
+  /**
+   * Performs visual pixel analysis to find the optimal camera distance for a tight fit.
+   * 
+   * @param options - Standard bake options (model, resolution, etc)
+   * @param index - The camera index to sample for fitting
+   * @param margin - Safety padding (0.0 to 1.0)
+   */
+  public async findOptimalDistance(options: BakeOptions, index: number = 0, margin: number = 0.05): Promise<number> {
+    const { distance = 5 } = options;
+    
+    // We render at a low resolution for performance
+    const PROBE_RES = 128; 
+    
+    // Direct pixel capture (instant vs previous async Image load)
+    const pixelData = this.capturePixelData({ ...options, resolution: PROBE_RES }, index);
+    const bounds = getAlphaBoundingBox(pixelData, PROBE_RES, PROBE_RES);
+    const scale = getFittingScale(bounds, margin);
+    
+    // newDist = currentDist / scale
+    // (Since distance is inversely proportional to apparent size)
+    const optimalDist = distance / scale;
+    return optimalDist;
   }
 
   public getRenderer(): THREE.WebGLRenderer {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { calculateOrbitalPosition, calculateGrid, calculateAutoDistance } from './math';
+import { calculateOrbitalPosition, calculateGrid, calculateAutoDistance, getAlphaBoundingBox, getFittingScale } from './math';
 
 describe('Math Utilities', () => {
   describe('calculateGrid', () => {
@@ -63,6 +63,36 @@ describe('Math Utilities', () => {
       const expectedDist = boxRadius / Math.sin(fovRad / 2);
       
       expect(distance).toBeCloseTo(expectedDist);
+    });
+  });
+
+  describe('Alpha Detection', () => {
+    it('should find bounding box of a simple square', () => {
+      const pixels = new Uint8Array(16 * 16 * 4);
+      // Fill a 4x4 square in the middle (from 6,6 to 9,9)
+      for (let y = 6; y <= 9; y++) {
+        for (let x = 6; x <= 9; x++) {
+          pixels[(y * 16 + x) * 4 + 3] = 255;
+        }
+      }
+
+      const bounds = getAlphaBoundingBox(pixels, 16, 16);
+      expect(bounds[0]).toBe(6 / 16);
+      expect(bounds[1]).toBe(9 / 16);
+      expect(bounds[2]).toBe(6 / 16);
+      expect(bounds[3]).toBe(9 / 16);
+    });
+
+    it('should calculate correct fitting scale', () => {
+      // Bounds cover 30% of the screen (0.6 - 0.3)
+      const bounds: [number, number, number, number] = [0.3, 0.6, 0.3, 0.6];
+      const margin = 0.1;
+      const scale = getFittingScale(bounds, margin);
+      
+      // targetSize = 1.0 - 0.2 = 0.8
+      // currentSize = 0.3
+      // scale = 0.8 / 0.3 = 2.666...
+      expect(scale).toBeCloseTo(8/3);
     });
   });
 });

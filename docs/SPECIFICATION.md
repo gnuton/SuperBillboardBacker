@@ -29,6 +29,8 @@ The mathematical foundation for camera placement:
 | `elevation` | `number` | `30` | Vertical angle in degrees. |
 | `resolution` | `number` | `256` | Squared size (px) of each frame. |
 | `transparent` | `boolean` | `true` | Whether to omit the background. |
+| `isAutoDistance` | `boolean` | `true` | Analyzes model bounds to auto-fit camera distance. |
+| `margin` | `number` | `0.1` | Safety padding when using `isAutoDistance` (0.0 to 0.5). |
 
 ## Demo Architecture
 The demo application (Vite + React) serves as a visual playground. It utilizes:
