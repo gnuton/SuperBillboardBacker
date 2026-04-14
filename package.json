@@ -1,8 +1,12 @@
 {
   "name": "super-billboard-backer",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A 3D object to 2D sprite baker for game artists.",
   "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
