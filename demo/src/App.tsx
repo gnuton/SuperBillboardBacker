@@ -12,6 +12,7 @@ const App = () => {
   const [padding, setPadding] = useState(2);
   const [isBaking, setIsBaking] = useState(false);
   const [bakedImage, setBakedImage] = useState<string | null>(null);
+  const [firstFramePreview, setFirstFramePreview] = useState<string | null>(null);
   
   // Refs for animation loop (avoiding stale closures)
   const paramsRef = useRef({ distance, elevation, frameCount });
@@ -146,6 +147,29 @@ const App = () => {
     }
   }, [frameCount]);
 
+  // Debounced real-time preview of the first frame
+  useEffect(() => {
+    const model = previewModelRef.current;
+    if (!model) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const url = await bakerRef.current.captureFrame({
+          model: model.clone(),
+          frameCount,
+          distance,
+          elevation,
+          resolution,
+        }, 0);
+        setFirstFramePreview(url);
+      } catch (err) {
+        console.error('Preview failed', err);
+      }
+    }, 150); // 150ms debounce
+
+    return () => clearTimeout(timer);
+  }, [distance, elevation, resolution, frameCount]);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -260,6 +284,18 @@ const App = () => {
       </div>
 
       <div className="result-panel">
+        <h2 className="title" style={{ fontSize: '1rem' }}>First Camera View</h2>
+        {firstFramePreview ? (
+          <div style={{ marginBottom: '1rem' }}>
+            <div className="help-text" style={{ marginBottom: '0.5rem' }}>Real-time sighting preview of frame #1</div>
+            <img src={firstFramePreview} className="preview-image" alt="First frame preview" style={{ border: '1px solid #3b82f6', background: '#000' }} />
+          </div>
+        ) : (
+          <div style={{ height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#444', fontSize: '0.8rem', border: '1px dashed #333', borderRadius: 10, marginBottom: '1rem' }}>
+            Load a model to see camera preview
+          </div>
+        )}
+
         <h2 className="title" style={{ fontSize: '1rem' }}>Generated Sprite Sheet</h2>
         {bakedImage ? (
           <>

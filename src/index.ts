@@ -94,6 +94,47 @@ export class SpriteBaker {
     return finalCanvas.toDataURL('image/png');
   }
 
+  /**
+   * Captures a single frame from the orbit.
+   * Useful for real-time previews.
+   */
+  public async captureFrame(options: BakeOptions, index: number = 0): Promise<string> {
+    const {
+      distance = 5,
+      elevation = 30,
+      resolution = 256,
+      transparent = true
+    } = options;
+
+    let object: THREE.Object3D;
+    if (typeof options.model === 'string') {
+      const gltf = await this.loader.loadAsync(options.model);
+      object = gltf.scene;
+    } else {
+      object = options.model;
+    }
+
+    this.scene.add(object);
+    this.renderer.setSize(resolution, resolution);
+    this.renderer.setClearAlpha(transparent ? 0 : 1);
+
+    const box = new THREE.Box3().setFromObject(object);
+    const center = box.getCenter(new THREE.Vector3());
+    const elevationRad = THREE.MathUtils.degToRad(elevation);
+    const azimuthRad = (index / options.frameCount) * Math.PI * 2;
+    
+    const pos = calculateOrbitalPosition(distance, azimuthRad, elevationRad, center);
+    
+    this.camera.position.set(pos.x, pos.y, pos.z);
+    this.camera.lookAt(center);
+    
+    this.renderer.render(this.scene, this.camera);
+    const dataUrl = this.renderer.domElement.toDataURL('image/png');
+
+    this.scene.remove(object);
+    return dataUrl;
+  }
+
   public getRenderer(): THREE.WebGLRenderer {
     return this.renderer;
   }
