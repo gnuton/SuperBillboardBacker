@@ -7,12 +7,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    environment: NPM_TOKEN
+    environment: npm_release
     permissions:
       id-token: write
       contents: read
-    env:
-      NODE_AUTH_TOKEN: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,6 +21,4 @@ jobs:
       - name: Sync version from tag
         run: npm version ${GITHUB_REF_NAME#v} --no-git-tag-version --allow-same-version
       - run: npm run build
-      - name: Debug Auth
-        run: npm whoami
-      - run: npm publish --access public --verbose
+      - run: npm publish --provenance --access public
