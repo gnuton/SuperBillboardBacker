@@ -8,6 +8,7 @@ export interface BakeOptions {
   distance?: number;
   elevation?: number; // In degrees
   resolution?: number; // Output size of each frame (e.g. 256)
+  padding?: number; // Pixel gap between frames
   transparent?: boolean;
 }
 
@@ -37,6 +38,7 @@ export class SpriteBaker {
       distance = 5,
       elevation = 30,
       resolution = 256,
+      padding = 0,
       transparent = true
     } = options;
 
@@ -61,8 +63,8 @@ export class SpriteBaker {
 
     const { rows, cols } = calculateGrid(frameCount);
     const finalCanvas = document.createElement('canvas');
-    finalCanvas.width = cols * resolution;
-    finalCanvas.height = rows * resolution;
+    finalCanvas.width = cols * resolution + (cols - 1) * padding;
+    finalCanvas.height = rows * resolution + (rows - 1) * padding;
     const ctx = finalCanvas.getContext('2d')!;
 
     const elevationRad = THREE.MathUtils.degToRad(elevation);
@@ -81,8 +83,8 @@ export class SpriteBaker {
       
       ctx.drawImage(
         this.renderer.domElement,
-        col * resolution,
-        row * resolution
+        col * (resolution + padding),
+        row * (resolution + padding)
       );
     }
 

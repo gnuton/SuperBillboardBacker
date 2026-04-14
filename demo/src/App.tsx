@@ -9,6 +9,7 @@ const App = () => {
   const [distance, setDistance] = useState(5);
   const [elevation, setElevation] = useState(30);
   const [resolution, setResolution] = useState(256);
+  const [padding, setPadding] = useState(2);
   const [isBaking, setIsBaking] = useState(false);
   const [bakedImage, setBakedImage] = useState<string | null>(null);
   
@@ -16,6 +17,7 @@ const App = () => {
   const bakerRef = useRef<SpriteBaker>(new SpriteBaker());
   const sceneRef = useRef<THREE.Scene>(new THREE.Scene());
   const previewModelRef = useRef<THREE.Object3D | null>(null);
+  const markersGroupRef = useRef<THREE.Group>(new THREE.Group());
 
   useEffect(() => {
     if (!viewportRef.current) return;
@@ -51,6 +53,9 @@ const App = () => {
     orbitRing.rotation.x = Math.PI / 2;
     // We'll update positioning in the animate loop to follow the elevation/model center
     scene.add(orbitRing);
+    
+    // Camera Markers Group
+    scene.add(markersGroupRef.current);
 
     const animate = () => {
       requestAnimationFrame(animate);
@@ -67,6 +72,24 @@ const App = () => {
       } else {
         orbitRing.position.y = distance * Math.sin(THREE.MathUtils.degToRad(elevation));
       }
+
+      // Update camera markers
+      const radiusAtElevation = distance * Math.cos(THREE.MathUtils.degToRad(elevation));
+      const elevationRad = THREE.MathUtils.degToRad(elevation);
+      const elevationY = distance * Math.sin(elevationRad);
+      
+      const box = previewModelRef.current ? new THREE.Box3().setFromObject(previewModelRef.current) : new THREE.Box3();
+      const center = box.getCenter(new THREE.Vector3());
+
+      markersGroupRef.current.children.forEach((child, i) => {
+        const azimuthRad = (i / frameCount) * Math.PI * 2;
+        child.position.set(
+          center.x + radiusAtElevation * Math.cos(azimuthRad),
+          center.y + elevationY,
+          center.z + radiusAtElevation * Math.sin(azimuthRad)
+        );
+        child.lookAt(center);
+      });
 
       renderer.render(scene, camera);
     };
@@ -90,6 +113,29 @@ const App = () => {
       }
     };
   }, []);
+
+  // Sync camera markers when frameCount changes
+  useEffect(() => {
+    const group = markersGroupRef.current;
+    
+    // Dispose old markers
+    while (group.children.length) {
+      const child = group.children[0] as THREE.Mesh;
+      child.geometry.dispose();
+      (child.material as THREE.Material).dispose();
+      group.remove(child);
+    }
+
+    // Create new markers
+    const markerGeom = new THREE.ConeGeometry(0.1, 0.2, 4);
+    markerGeom.rotateX(Math.PI / 2); // Point towards center
+    const markerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    for (let i = 0; i < frameCount; i++) {
+      const marker = new THREE.Mesh(markerGeom, markerMat);
+      group.add(marker);
+    }
+  }, [frameCount]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -123,6 +169,7 @@ const App = () => {
         distance,
         elevation,
         resolution,
+        padding,
       });
       setBakedImage(dataUrl);
     } catch (err) {
@@ -143,7 +190,7 @@ const App = () => {
         </div>
 
         <div className="control-group">
-          <label>Frames: {frameCount}</label>
+          <label>n of cameras: {frameCount}</label>
           <input 
             type="range" min="4" max="64" step="1" 
             value={frameCount} onChange={(e) => setFrameCount(parseInt(e.target.value))} 
@@ -167,11 +214,22 @@ const App = () => {
         </div>
 
         <div className="control-group">
+          <label>Padding: {padding}px</label>
+          <input 
+            type="range" min="0" max="64" step="1" 
+            value={padding} onChange={(e) => setPadding(parseInt(e.target.value))} 
+          />
+        </div>
+
+        <div className="control-group">
           <label>Resolution: {resolution}px</label>
           <select value={resolution} onChange={(e) => setResolution(parseInt(e.target.value))}>
+            <option value={64}>64x64</option>
             <option value={128}>128x128</option>
             <option value={256}>256x256</option>
             <option value={512}>512x512</option>
+            <option value={1024}>1024x1024</option>
+            <option value={2048}>2048x2048</option>
           </select>
         </div>
 
