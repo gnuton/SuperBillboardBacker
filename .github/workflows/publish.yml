@@ -21,4 +21,6 @@ jobs:
       - name: Sync version from tag
         run: npm version ${GITHUB_REF_NAME#v} --no-git-tag-version --allow-same-version
       - run: npm run build
-      - run: npm publish --access public
+      - name: Debug Auth
+        run: npm whoami
+      - run: npm publish --access public --verbose
