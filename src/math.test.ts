@@ -56,10 +56,12 @@ describe('Math Utilities', () => {
       
       const distance = calculateAutoDistance(mesh, 45, 1.0);
       
-      // radius = 5
-      // fov = 45 deg
-      // dist = radius / sin(fov/2)
-      const expectedDist = 5 / Math.sin((45 / 2) * Math.PI / 180);
+      // For a sphere of radius 5, the bounding box is [-5, -5, -5] to [5, 5, 5]
+      // The bounding sphere of THIS BOX has radius sqrt(5^2 + 5^2 + 5^2) = sqrt(75) approx 8.66
+      const boxRadius = Math.sqrt(3 * (5 * 5));
+      const fovRad = (45 * Math.PI) / 180;
+      const expectedDist = boxRadius / Math.sin(fovRad / 2);
+      
       expect(distance).toBeCloseTo(expectedDist);
     });
   });
