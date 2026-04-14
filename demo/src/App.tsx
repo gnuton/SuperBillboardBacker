@@ -13,6 +13,7 @@ const App = () => {
   const [padding, setPadding] = useState(2);
   const [isBaking, setIsBaking] = useState(false);
   const [bakedImage, setBakedImage] = useState<string | null>(null);
+  const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
   const [firstFramePreview, setFirstFramePreview] = useState<string | null>(null);
   const [isAutoDistance, setIsAutoDistance] = useState(true);
   const [distanceMode, setDistanceMode] = useState<'best-fit' | '360-n'>('best-fit');
@@ -105,6 +106,10 @@ const App = () => {
           centerMk.z + radiusAtElevationMk * Math.sin(azimuthRad)
         );
         child.lookAt(centerMk);
+
+        // Highlight current camera
+        const mesh = child as THREE.Mesh;
+        (mesh.material as THREE.MeshBasicMaterial).color.set(i === currentCameraIndex ? 0xff0000 : 0xffffff);
       });
 
       renderer.render(scene, camera);
@@ -137,18 +142,39 @@ const App = () => {
     // Dispose old markers
     while (group.children.length) {
       const child = group.children[0] as THREE.Mesh;
-      child.geometry.dispose();
-      (child.material as THREE.Material).dispose();
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) (child.material as THREE.Material).dispose();
       group.remove(child);
     }
 
     // Create new markers
     const markerGeom = new THREE.ConeGeometry(0.1, 0.2, 4);
     markerGeom.rotateX(Math.PI / 2); // Point towards center
-    const markerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    
+    const createNumberTexture = (n: number) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 64;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = 'white';
+      ctx.font = 'Bold 40px Inter, Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(n.toString(), 32, 32);
+      return new THREE.CanvasTexture(canvas);
+    };
 
     for (let i = 0; i < frameCount; i++) {
+      const markerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
       const marker = new THREE.Mesh(markerGeom, markerMat);
+      
+      // Add number label
+      const spriteMat = new THREE.SpriteMaterial({ map: createNumberTexture(i + 1) });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.position.y = 0.3;
+      sprite.scale.set(0.4, 0.4, 1);
+      marker.add(sprite);
+
       group.add(marker);
     }
   }, [frameCount]);
@@ -166,7 +192,7 @@ const App = () => {
           distance,
           elevation,
           resolution,
-        }, 0);
+        }, currentCameraIndex);
         setFirstFramePreview(url);
       } catch (err) {
         console.error('Preview failed', err);
@@ -174,7 +200,7 @@ const App = () => {
     }, 150); // 150ms debounce
 
     return () => clearTimeout(timer);
-  }, [distance, elevation, resolution, frameCount]);
+  }, [distance, elevation, resolution, frameCount, currentCameraIndex]);
 
   // Handle Auto Distance calculation
   useEffect(() => {
@@ -333,11 +359,34 @@ const App = () => {
       </div>
 
       <div className="result-panel">
-        <h2 className="title" style={{ fontSize: '1rem' }}>First Camera View</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <h2 className="title" style={{ fontSize: '1rem' }}>Camera Preview</h2>
+          <div style={{ fontSize: '0.7rem', color: '#888', fontWeight: 600 }}>
+            {currentCameraIndex + 1} / {frameCount}
+          </div>
+        </div>
+        
         {firstFramePreview ? (
-          <div style={{ marginBottom: '1rem' }}>
-            <div className="help-text" style={{ marginBottom: '0.5rem' }}>Real-time sighting preview of frame #1</div>
-            <img src={firstFramePreview} className="preview-image" alt="First frame preview" style={{ border: '1px solid #3b82f6', background: '#000' }} />
+          <div style={{ marginBottom: '1rem', position: 'relative' }}>
+            <div className="help-text" style={{ marginBottom: '0.5rem' }}>Real-time sighting preview of selected camera</div>
+            
+            <div className="preview-nav-wrapper">
+              <button 
+                className="nav-arrow left" 
+                onClick={() => setCurrentCameraIndex((prev) => (prev - 1 + frameCount) % frameCount)}
+              >
+                &lsaquo;
+              </button>
+              
+              <img src={firstFramePreview} className="preview-image" alt="Camera preview" style={{ border: `2px solid ${isBaking ? '#333' : '#3b82f6'}`, background: '#000' }} />
+              
+              <button 
+                className="nav-arrow right" 
+                onClick={() => setCurrentCameraIndex((prev) => (prev + 1) % frameCount)}
+              >
+                &rsaquo;
+              </button>
+            </div>
           </div>
         ) : (
           <div style={{ height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#444', fontSize: '0.8rem', border: '1px dashed #333', borderRadius: 10, marginBottom: '1rem' }}>
