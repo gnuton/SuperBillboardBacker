@@ -7,6 +7,7 @@ A sophisticated TypeScript library and interactive tool designed for game artist
 - **Three.js Integration**: Seamlessly loads GLTF, GLB, and OBJ formats.
 - **High-Resolution Baking**: Captures frames to a stitched sprite sheet.
 - **Interactive Preview**: Real-time visualization of capture orbits and camera positions.
+- **Embeddable UI**: A full-featured, framework-agnostic UI class ready to be dropped into any `div`.
 - **Developer Friendly**: Written in modern TypeScript with full ESM support.
 
 ## Demo
@@ -30,6 +31,51 @@ const result = await baker.bake({
 
 // Download or use the generated sprite sheet
 ```
+
+## Embedding in your App
+
+The library provides a standalone, embeddable UI class called `BillboardBackerUI`. This allows you to integrate the full baking tool into your own web application with just a few lines of code.
+
+### Usage
+
+```typescript
+import { BillboardBackerUI } from 'super-billboard-backer';
+import 'super-billboard-backer/dist/ui/BillboardBackerUI.css';
+
+const container = document.getElementById('my-container');
+const ui = new BillboardBackerUI({
+  container: container,
+  theme: 'dark', // 'dark' | 'light' | customRecord
+  onBakeComplete: (dataUrl) => {
+    console.log('Bake finished!', dataUrl);
+  }
+});
+
+// Programmatic control
+ui.loadModel('url/to/model.glb');
+ui.setParams({ frameCount: 32 });
+```
+
+### Skinning & Theming
+
+`BillboardBackerUI` is highly skinnable via CSS variables. You can override the default look by setting variables on your container or globally:
+
+```css
+#my-container {
+  --sbb-primary-color: #ff5722;
+  --sbb-bg-color: #1a1a1a;
+  --sbb-radius: 4px;
+}
+```
+
+Available variables:
+- `--sbb-primary-color`: Accent/Active color.
+- `--sbb-bg-color`: Main background.
+- `--sbb-text-color`: Main text color.
+- `--sbb-glass-bg`: Panel backgrounds.
+- `--sbb-viewport-bg`: 3D viewport background.
+- `--sbb-radius`: Main border radius.
+
 
 ## Development & Demo Setup
 

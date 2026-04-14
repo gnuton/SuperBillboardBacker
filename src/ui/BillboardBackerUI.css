@@ -1,0 +1,202 @@
+:root {
+  --sbb-primary-color: #3b82f6;
+  --sbb-primary-hover: #2563eb;
+  --sbb-bg-color: #0d0d12;
+  --sbb-text-color: rgba(255, 255, 255, 0.87);
+  --sbb-text-secondary: #888;
+  --sbb-text-muted: #666;
+  --sbb-glass-bg: rgba(255, 255, 255, 0.03);
+  --sbb-glass-border: rgba(255, 255, 255, 0.1);
+  --sbb-viewport-bg: #000;
+  --sbb-radius: 20px;
+  --sbb-radius-sm: 8px;
+  --sbb-font: 'Inter', system-ui, sans-serif;
+}
+
+.sbb-ui-container {
+  display: grid;
+  grid-template-columns: 320px 1fr 320px;
+  height: 100%;
+  width: 100%;
+  gap: 1rem;
+  padding: 1rem;
+  box-sizing: border-box;
+  background-color: var(--sbb-bg-color);
+  color: var(--sbb-text-color);
+  font-family: var(--sbb-font);
+  overflow: hidden;
+}
+
+/* Sidebar & Result Panel Common */
+.sbb-panel {
+  background: var(--sbb-glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--sbb-glass-border);
+  border-radius: var(--sbb-radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow-y: auto;
+}
+
+.sbb-viewport {
+  position: relative;
+  background: var(--sbb-viewport-bg);
+  border-radius: var(--sbb-radius);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sbb-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #fff 0%, #a5a5a5 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.sbb-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sbb-label {
+  font-size: 0.75rem;
+  color: var(--sbb-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sbb-help-text {
+  font-size: 0.7rem;
+  color: var(--sbb-text-muted);
+  line-height: 1.2;
+}
+
+.sbb-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--sbb-glass-border);
+  border-radius: var(--sbb-radius-sm);
+  color: white;
+  padding: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.sbb-button {
+  background: var(--sbb-primary-color);
+  color: white;
+  border: none;
+  padding: 0.75rem;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  font-size: 0.9rem;
+}
+
+.sbb-button:hover:not(:disabled) {
+  background: var(--sbb-primary-hover);
+  transform: translateY(-2px);
+}
+
+.sbb-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.sbb-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sbb-button-primary {
+  background: linear-gradient(135deg, var(--sbb-primary-color) 0%, #1d4ed8 100%);
+  margin-top: auto;
+}
+
+.sbb-preview-image {
+  max-width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--sbb-glass-border);
+  background: #000;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.sbb-preview-image[src] {
+  opacity: 1;
+}
+
+.sbb-preview-nav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.sbb-nav-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--sbb-glass-border);
+  color: white;
+  font-size: 1.5rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 10;
+  padding: 0;
+}
+
+.sbb-nav-arrow:hover {
+  background: var(--sbb-primary-color);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.sbb-nav-arrow.left { left: 5px; }
+.sbb-nav-arrow.right { right: 5px; }
+
+.sbb-baked-image {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--sbb-glass-border);
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.sbb-baked-image[src] {
+  opacity: 1;
+}
+
+/* Themes */
+.sbb-theme-light {
+  --sbb-bg-color: #f8fafc;
+  --sbb-text-color: #1e293b;
+  --sbb-text-secondary: #64748b;
+  --sbb-text-muted: #94a3b8;
+  --sbb-glass-bg: rgba(255, 255, 255, 0.8);
+  --sbb-glass-border: rgba(0, 0, 0, 0.1);
+  --sbb-viewport-bg: #e2e8f0;
+}
+
+.sbb-theme-light .sbb-title {
+  background: linear-gradient(135deg, #1e293b 0%, #64748b 100%);
+  -webkit-background-clip: text;
+}

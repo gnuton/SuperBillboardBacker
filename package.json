@@ -1,6 +1,6 @@
 {
   "name": "super-billboard-backer",
-  "version": "0.1.0",
+  "version": "0.0.2",
   "description": "A 3D object to 2D sprite baker for game artists.",
   "type": "module",
   "main": "./dist/index.js",
