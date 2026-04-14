@@ -13,6 +13,12 @@ const App = () => {
   const [isBaking, setIsBaking] = useState(false);
   const [bakedImage, setBakedImage] = useState<string | null>(null);
   
+  // Refs for animation loop (avoiding stale closures)
+  const paramsRef = useRef({ distance, elevation, frameCount });
+  useEffect(() => {
+    paramsRef.current = { distance, elevation, frameCount };
+  }, [distance, elevation, frameCount]);
+
   const viewportRef = useRef<HTMLDivElement>(null);
   const bakerRef = useRef<SpriteBaker>(new SpriteBaker());
   const sceneRef = useRef<THREE.Scene>(new THREE.Scene());
@@ -62,33 +68,36 @@ const App = () => {
       controls.update();
       
       // Update orbit ring based on elevation and center
+      const { distance: d, elevation: e, frameCount: fc } = paramsRef.current;
+      
       if (previewModelRef.current) {
         const box = new THREE.Box3().setFromObject(previewModelRef.current);
         const center = box.getCenter(new THREE.Vector3());
-        orbitRing.position.set(center.x, center.y + distance * Math.sin(THREE.MathUtils.degToRad(elevation)), center.z);
+        orbitRing.position.set(center.x, center.y + d * Math.sin(THREE.MathUtils.degToRad(e)), center.z);
         // Scale radius based on distance at that height
-        const radiusAtElevation = distance * Math.cos(THREE.MathUtils.degToRad(elevation));
-        orbitRing.scale.set(radiusAtElevation / distance, radiusAtElevation / distance, 1);
+        const radiusAtElevation = d * Math.cos(THREE.MathUtils.degToRad(e));
+        orbitRing.scale.set(radiusAtElevation / d, radiusAtElevation / d, 1);
       } else {
-        orbitRing.position.y = distance * Math.sin(THREE.MathUtils.degToRad(elevation));
+        orbitRing.position.y = d * Math.sin(THREE.MathUtils.degToRad(e));
       }
 
       // Update camera markers
-      const radiusAtElevation = distance * Math.cos(THREE.MathUtils.degToRad(elevation));
-      const elevationRad = THREE.MathUtils.degToRad(elevation);
-      const elevationY = distance * Math.sin(elevationRad);
+      const { distance: d2, elevation: e2, frameCount: fc2 } = paramsRef.current;
+      const radiusAtElevationMk = d2 * Math.cos(THREE.MathUtils.degToRad(e2));
+      const elevationRadMk = THREE.MathUtils.degToRad(e2);
+      const elevationYMk = d2 * Math.sin(elevationRadMk);
       
-      const box = previewModelRef.current ? new THREE.Box3().setFromObject(previewModelRef.current) : new THREE.Box3();
-      const center = box.getCenter(new THREE.Vector3());
+      const boxMk = previewModelRef.current ? new THREE.Box3().setFromObject(previewModelRef.current) : new THREE.Box3();
+      const centerMk = boxMk.getCenter(new THREE.Vector3());
 
       markersGroupRef.current.children.forEach((child, i) => {
-        const azimuthRad = (i / frameCount) * Math.PI * 2;
+        const azimuthRad = (i / fc2) * Math.PI * 2;
         child.position.set(
-          center.x + radiusAtElevation * Math.cos(azimuthRad),
-          center.y + elevationY,
-          center.z + radiusAtElevation * Math.sin(azimuthRad)
+          centerMk.x + radiusAtElevationMk * Math.cos(azimuthRad),
+          centerMk.y + elevationYMk,
+          centerMk.z + radiusAtElevationMk * Math.sin(azimuthRad)
         );
-        child.lookAt(center);
+        child.lookAt(centerMk);
       });
 
       renderer.render(scene, camera);
