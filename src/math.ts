@@ -57,7 +57,7 @@ export function calculateGrid(frameCount: number) {
 export function calculateAutoDistance(
   object: { boundingBox?: any, getBoundingSphere?: any } | any,
   cameraFov: number = 45,
-  margin: number = 1.1
+  margin: number = 1.02
 ): number {
   const box = new THREE.Box3().setFromObject(object);
   const sphere = box.getBoundingSphere(new THREE.Sphere());

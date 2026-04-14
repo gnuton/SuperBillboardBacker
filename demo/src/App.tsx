@@ -24,13 +24,18 @@ const App = () => {
   }, [distance, elevation, frameCount]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
-  const bakerRef = useRef<SpriteBaker>(new SpriteBaker());
-  const sceneRef = useRef<THREE.Scene>(new THREE.Scene());
+  const bakerRef = useRef<SpriteBaker | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
   const previewModelRef = useRef<THREE.Object3D | null>(null);
   const markersGroupRef = useRef<THREE.Group>(new THREE.Group());
 
+  // Initialize objects once
+  if (!bakerRef.current) bakerRef.current = new SpriteBaker();
+  if (!sceneRef.current) sceneRef.current = new THREE.Scene();
+
   useEffect(() => {
-    if (!viewportRef.current) return;
+    if (!viewportRef.current || !sceneRef.current) return;
+    const scene = sceneRef.current!;
 
     const width = viewportRef.current.clientWidth;
     const height = viewportRef.current.clientHeight;
@@ -38,8 +43,6 @@ const App = () => {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
     viewportRef.current.appendChild(renderer.domElement);
-
-    const scene = sceneRef.current;
     scene.background = new THREE.Color(0x050505);
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
@@ -153,11 +156,11 @@ const App = () => {
   // Debounced real-time preview of the first frame
   useEffect(() => {
     const model = previewModelRef.current;
-    if (!model) return;
+    if (!model || !bakerRef.current) return;
 
     const timer = setTimeout(async () => {
       try {
-        const url = await bakerRef.current.captureFrame({
+        const url = await bakerRef.current!.captureFrame({
           model: model.clone(),
           frameCount,
           distance,
@@ -183,7 +186,7 @@ const App = () => {
         setDistance(autoD);
       }
     }
-  }, [isAutoDistance, distanceMode, elevation, frameCount]); 
+  }, [isAutoDistance, distanceMode, frameCount]); // Removed elevation dependency for stability
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -192,11 +195,12 @@ const App = () => {
     const url = URL.createObjectURL(file);
     const loader = new GLTFLoader();
     loader.load(url, (gltf) => {
+      const scene = sceneRef.current!;
       if (previewModelRef.current) {
-        sceneRef.current.remove(previewModelRef.current);
+        scene.remove(previewModelRef.current);
       }
       previewModelRef.current = gltf.scene;
-      sceneRef.current.add(gltf.scene);
+      scene.add(gltf.scene);
       
       // Focus camera on model via auto-distance if enabled
       if (isAutoDistance) {
@@ -212,10 +216,10 @@ const App = () => {
   };
 
   const handleBake = async () => {
-    if (!previewModelRef.current) return;
+    if (!previewModelRef.current || !bakerRef.current) return;
     setIsBaking(true);
     try {
-      const dataUrl = await bakerRef.current.bake({
+      const dataUrl = await bakerRef.current!.bake({
         model: previewModelRef.current.clone(),
         frameCount,
         distance,
