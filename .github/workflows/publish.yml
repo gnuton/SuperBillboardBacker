@@ -7,9 +7,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: NPM_TOKEN
+    environment: npm_release
     permissions:
-      id-token: write  # Required for OIDC Trusted Publishing
+      id-token: write # Required for OIDC Trusted Publishing
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org/"  # Required for OIDC to configure .npmrc
+          registry-url: "https://registry.npmjs.org/" # Required for OIDC to configure .npmrc
           cache: "npm"
 
       - run: npm ci
