@@ -19,9 +19,6 @@ jobs:
           registry-url: "https://registry.npmjs.org/"  # Required for OIDC to configure .npmrc
           cache: "npm"
 
-      - name: Upgrade npm for Trusted Publishing support (requires npm >= 11.5.1)
-        run: npm install -g npm@latest
-
       - run: npm ci
 
       - run: npm test -- --run
