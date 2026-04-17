@@ -277,8 +277,6 @@ export class SpriteBaker {
   public async findGlobalOptimalDistance(options: BakeOptions, margin: number = 0.05): Promise<{ distance: number, aspectRatio: number }> {
     const { distance = 5, includeTop = false, includeBottom = false } = options;
     const PROBE_RES = 128;
-    const probeCount = 8;
-    
     let globalBounds: [number, number, number, number] = [1, 0, 1, 0]; // [minX, maxX, minY, maxY]
     let foundAny = false;
 
