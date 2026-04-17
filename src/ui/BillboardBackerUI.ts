@@ -35,6 +35,7 @@ export class BillboardBackerUI extends EventTarget {
   private previewControls: OrbitControls;
   private previewModel: THREE.Object3D | null = null;
   private orbitRing: THREE.Mesh;
+
   private markersGroup: THREE.Group;
   private animationId: number = 0;
 
@@ -61,6 +62,9 @@ export class BillboardBackerUI extends EventTarget {
       includeBottom: false,
       isAutoDistance: true,
       margin: 0.1,
+      zoom: 1.0,
+      aspectRatio: 1.0,
+      isAutoAspect: true,
       ...options.initialParams
     };
 
@@ -89,6 +93,8 @@ export class BillboardBackerUI extends EventTarget {
     );
     this.orbitRing.rotation.x = Math.PI / 2;
     this.previewScene.add(this.orbitRing);
+
+
 
     this.markersGroup = new THREE.Group();
     this.previewScene.add(this.markersGroup);
@@ -157,6 +163,18 @@ export class BillboardBackerUI extends EventTarget {
       </div>
 
       <div class="sbb-control-group">
+        <label class="sbb-label" style="text-transform:none">
+          <input type="checkbox" class="sbb-check-auto-aspect" ${this.params.isAutoAspect ? 'checked' : ''}> Auto Aspect Ratio
+        </label>
+        <div class="sbb-help-text">Adjusts frame width to fit object proportions.</div>
+      </div>
+
+      <div class="sbb-control-group sbb-aspect-manual" style="display: ${this.params.isAutoAspect ? 'none' : 'block'}">
+        <label class="sbb-label">Aspect Ratio: <span class="sbb-val-aspectRatio">${this.params.aspectRatio.toFixed(2)}</span></label>
+        <input type="range" class="sbb-input sbb-range-aspectRatio" min="0.1" max="5.0" step="0.01" value="${this.params.aspectRatio}" />
+      </div>
+
+      <div class="sbb-control-group">
         <label class="sbb-label">Elevation: <span class="sbb-val-elevation">${this.params.elevation}</span>&deg;</label>
         <input type="range" class="sbb-input sbb-range-elevation" min="-90" max="90" step="1" value="${this.params.elevation}" />
       </div>
@@ -175,6 +193,12 @@ export class BillboardBackerUI extends EventTarget {
       <div class="sbb-control-group">
         <label class="sbb-label">Padding: <span class="sbb-val-padding">${this.params.padding}</span> px</label>
         <input type="range" class="sbb-input sbb-range-padding" min="0" max="64" step="1" value="${this.params.padding}" />
+      </div>
+
+      <div class="sbb-control-group">
+        <label class="sbb-label">Zoom: <span class="sbb-val-zoom">${Math.round(this.params.zoom * 100)}</span>%</label>
+        <input type="range" class="sbb-input sbb-range-zoom" min="0.5" max="2.0" step="0.01" value="${this.params.zoom}" />
+        <div class="sbb-help-text">Scale factor for manual frame framing.</div>
       </div>
     `;
     this.bakeBtn = document.createElement('button');
@@ -280,6 +304,18 @@ export class BillboardBackerUI extends EventTarget {
       this.setParams({ padding: parseInt(e.target.value) });
     });
 
+    listen('.sbb-range-zoom', 'input', (e: any) => {
+      this.setParams({ zoom: parseFloat(e.target.value) });
+    });
+
+    listen('.sbb-check-auto-aspect', 'change', (e: any) => {
+      this.setParams({ isAutoAspect: e.target.checked });
+    });
+
+    listen('.sbb-range-aspectRatio', 'input', (e: any) => {
+      this.setParams({ aspectRatio: parseFloat(e.target.value) });
+    });
+
     listen('.sbb-nav-arrow.left', 'click', () => {
       const total = this.getTotalFrames();
       this.currentCameraIndex = (this.currentCameraIndex - 1 + total) % total;
@@ -353,12 +389,15 @@ export class BillboardBackerUI extends EventTarget {
     this.setLoading(this.viewportOverlay, true, 'Analyzing Layout...');
     
     try {
-      const optimal = await this.baker.findOptimalDistance({
+      const { distance, aspectRatio } = await this.baker.findGlobalOptimalDistance({
         ...this.params,
         model: this.previewModel.clone()
-      }, this.currentCameraIndex, this.params.margin);
+      }, this.params.margin);
       
-      this.params.distance = optimal;
+      this.params.distance = distance;
+      if (this.params.isAutoAspect) {
+        this.params.aspectRatio = aspectRatio;
+      }
       this.updateControlsUI();
     } catch (err) {
       console.error('Auto distance failed', err);
@@ -399,12 +438,21 @@ export class BillboardBackerUI extends EventTarget {
         this.currentCameraIndex = 0;
       }
       this.updateSightingInfo();
+      if (this.params.isAutoDistance) this.updateAutoDistance();
+    }
+
+    if (this.params.isAutoDistance && (params.margin !== undefined || params.elevation !== undefined)) {
+      this.updateAutoDistance();
     }
 
     this.updateControlsUI();
     const resInd = this.uiContainer.querySelector('.sbb-res-indicator');
-    if (resInd) resInd.textContent = `${this.params.resolution}px`;
+    if (resInd) {
+      const w = Math.round(this.params.resolution * this.params.aspectRatio);
+      resInd.textContent = `${w} x ${this.params.resolution}px`;
+    }
     
+    if (params.isAutoAspect === true) this.updateAutoDistance();
     this.refreshSighting();
     this.dispatchEvent(new CustomEvent('change', { detail: this.params }));
   }
@@ -438,11 +486,20 @@ export class BillboardBackerUI extends EventTarget {
     setVal('.sbb-range-margin', this.params.margin);
     setText('.sbb-val-margin', Math.round(this.params.margin * 100));
 
+    setVal('.sbb-range-zoom', this.params.zoom);
+    setText('.sbb-val-zoom', Math.round(this.params.zoom * 100));
+
     const marginGroup = this.uiContainer.querySelector('.sbb-margin-group') as HTMLElement;
     if (marginGroup) marginGroup.style.display = this.params.isAutoDistance ? 'block' : 'none';
 
     const distGroup = this.uiContainer.querySelector('.sbb-dist-manual') as HTMLElement;
     if (distGroup) distGroup.style.display = this.params.isAutoDistance ? 'none' : 'block';
+
+    setVal('.sbb-range-aspectRatio', this.params.aspectRatio);
+    setText('.sbb-val-aspectRatio', this.params.aspectRatio.toFixed(2));
+
+    const aspectGroup = this.uiContainer.querySelector('.sbb-aspect-manual') as HTMLElement;
+    if (aspectGroup) aspectGroup.style.display = this.params.isAutoAspect ? 'none' : 'block';
   }
 
   private updateMarkers() {
@@ -518,6 +575,8 @@ export class BillboardBackerUI extends EventTarget {
       const mesh = child as THREE.Mesh;
       (mesh.material as THREE.MeshBasicMaterial).color.set(i === this.currentCameraIndex ? 0xff0000 : 0xffffff);
     });
+
+
 
     this.renderer.render(this.previewScene, this.previewCamera);
   }

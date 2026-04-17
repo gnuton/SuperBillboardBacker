@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { calculateOrbitalPosition, calculateGrid, getAlphaBoundingBox, getFittingScale } from './math.js';
+import { calculateOrbitalPosition, calculateGrid, getAlphaBoundingBox, getFittingScale, mergeBounds } from './math.js';
 export * from './ui/BillboardBackerUI.js';
 
 export interface BakeOptions {
@@ -15,6 +15,9 @@ export interface BakeOptions {
   includeBottom?: boolean;
   isAutoDistance?: boolean;
   margin?: number;
+  zoom?: number; // Zoom multiplier (default 1.0)
+  aspectRatio?: number; // width / height (default 1.0)
+  isAutoAspect?: boolean;
 }
 
 export class SpriteBaker {
@@ -53,8 +56,13 @@ export class SpriteBaker {
       padding = 0,
       transparent = true,
       includeTop = false,
-      includeBottom = false
+      includeBottom = false,
+      zoom = 1.0,
+      aspectRatio = 1.0
     } = options;
+
+    const frameW = Math.round(resolution * aspectRatio);
+    const frameH = resolution;
 
     let object: THREE.Object3D;
     if (typeof options.model === 'string') {
@@ -77,14 +85,16 @@ export class SpriteBaker {
     const originalClearAlpha = this.renderer.getClearAlpha();
 
     try {
-      this.renderer.setSize(resolution, resolution);
+      this.renderer.setSize(frameW, frameH);
       this.renderer.setClearAlpha(transparent ? 0 : 1);
+      this.camera.aspect = aspectRatio;
+      this.camera.updateProjectionMatrix();
 
       const totalFrames = frameCount + (includeTop ? 1 : 0) + (includeBottom ? 1 : 0);
       const { rows, cols } = calculateGrid(totalFrames);
       const finalCanvas = document.createElement('canvas');
-      finalCanvas.width = cols * resolution + (cols - 1) * padding;
-      finalCanvas.height = rows * resolution + (rows - 1) * padding;
+      finalCanvas.width = cols * frameW + (cols - 1) * padding;
+      finalCanvas.height = rows * frameH + (rows - 1) * padding;
       const ctx = finalCanvas.getContext('2d')!;
 
       const elevationRad = THREE.MathUtils.degToRad(elevation);
@@ -92,12 +102,12 @@ export class SpriteBaker {
       for (let i = 0; i < totalFrames; i++) {
         if (i < frameCount) {
           const azimuthRad = (i / frameCount) * Math.PI * 2;
-          const pos = calculateOrbitalPosition(distance, azimuthRad, elevationRad, center);
+          const pos = calculateOrbitalPosition(distance / zoom, azimuthRad, elevationRad, center);
           this.camera.position.set(pos.x, pos.y, pos.z);
         } else if (includeTop && i === frameCount) {
-          this.camera.position.set(center.x, center.y + distance, center.z);
+          this.camera.position.set(center.x, center.y + (distance / zoom), center.z);
         } else {
-          this.camera.position.set(center.x, center.y - distance, center.z);
+          this.camera.position.set(center.x, center.y - (distance / zoom), center.z);
         }
         
         this.camera.lookAt(center);
@@ -108,8 +118,8 @@ export class SpriteBaker {
         
         ctx.drawImage(
           this.renderer.domElement,
-          col * (resolution + padding),
-          row * (resolution + padding)
+          col * (frameW + padding),
+          row * (frameH + padding)
         );
       }
 
@@ -130,8 +140,13 @@ export class SpriteBaker {
       resolution = 256,
       transparent = true,
       includeTop = false,
-      includeBottom = false
+      includeBottom = false,
+      zoom = 1.0,
+      aspectRatio = 1.0
     } = options;
+
+    const frameW = Math.round(resolution * aspectRatio);
+    const frameH = resolution;
 
     let object: THREE.Object3D;
     if (typeof options.model === 'string') {
@@ -150,8 +165,10 @@ export class SpriteBaker {
     const originalClearAlpha = this.renderer.getClearAlpha();
 
     try {
-      this.renderer.setSize(resolution, resolution);
+      this.renderer.setSize(frameW, frameH);
       this.renderer.setClearAlpha(transparent ? 0 : 1);
+      this.camera.aspect = aspectRatio;
+      this.camera.updateProjectionMatrix();
 
       const box = new THREE.Box3().setFromObject(object);
       const center = box.getCenter(new THREE.Vector3());
@@ -159,12 +176,12 @@ export class SpriteBaker {
       
       if (index < options.frameCount) {
         const azimuthRad = (index / options.frameCount) * Math.PI * 2;
-        const pos = calculateOrbitalPosition(distance, azimuthRad, elevationRad, center);
+        const pos = calculateOrbitalPosition(distance / zoom, azimuthRad, elevationRad, center);
         this.camera.position.set(pos.x, pos.y, pos.z);
       } else if (includeTop && index === options.frameCount) {
-        this.camera.position.set(center.x, center.y + distance, center.z);
+        this.camera.position.set(center.x, center.y + (distance / zoom), center.z);
       } else {
-        this.camera.position.set(center.x, center.y - distance, center.z);
+        this.camera.position.set(center.x, center.y - (distance / zoom), center.z);
       }
       
       this.camera.lookAt(center);
@@ -186,7 +203,12 @@ export class SpriteBaker {
       elevation = 30,
       resolution = 128,
       includeTop = false,
+      zoom = 1.0,
+      aspectRatio = 1.0
     } = options;
+
+    const frameW = Math.round(resolution * aspectRatio);
+    const frameH = resolution;
 
     const object = options.model instanceof THREE.Object3D ? options.model : null;
     if (!object) return new Uint8Array(0);
@@ -200,8 +222,10 @@ export class SpriteBaker {
     const originalClearAlpha = this.renderer.getClearAlpha();
 
     try {
-      this.renderer.setSize(resolution, resolution);
+      this.renderer.setSize(frameW, frameH);
       this.renderer.setClearAlpha(0);
+      this.camera.aspect = aspectRatio;
+      this.camera.updateProjectionMatrix();
 
       const box = new THREE.Box3().setFromObject(object);
       const center = box.getCenter(new THREE.Vector3());
@@ -209,21 +233,29 @@ export class SpriteBaker {
       
       if (index < options.frameCount) {
         const azimuthRad = (index / options.frameCount) * Math.PI * 2;
-        const pos = calculateOrbitalPosition(distance, azimuthRad, elevationRad, center);
+        const pos = calculateOrbitalPosition(distance / zoom, azimuthRad, elevationRad, center);
         this.camera.position.set(pos.x, pos.y, pos.z);
       } else if (includeTop && index === options.frameCount) {
-        this.camera.position.set(center.x, center.y + distance, center.z);
+        this.camera.position.set(center.x, center.y + (distance / zoom), center.z);
       } else {
-        this.camera.position.set(center.x, center.y - distance, center.z);
+        this.camera.position.set(center.x, center.y - (distance / zoom), center.z);
       }
       
       this.camera.lookAt(center);
       this.renderer.render(this.scene, this.camera);
       
-      const pixels = new Uint8Array(resolution * resolution * 4);
+      const pixels = new Uint8Array(frameW * frameH * 4);
       const gl = this.renderer.getContext();
-      gl.readPixels(0, 0, resolution, resolution, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-      return pixels;
+      gl.readPixels(0, 0, frameW, frameH, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      
+      // WebGL reads from bottom-to-top; flip vertically for getAlphaBoundingBox
+      const flipped = new Uint8Array(frameW * frameH * 4);
+      for (let y = 0; y < frameH; y++) {
+        const srcOffset = (frameH - 1 - y) * frameW * 4;
+        const dstOffset = y * frameW * 4;
+        flipped.set(pixels.subarray(srcOffset, srcOffset + frameW * 4), dstOffset);
+      }
+      return flipped;
     } finally {
       this.scene.remove(object);
       // Restore state
@@ -236,10 +268,66 @@ export class SpriteBaker {
   public async findOptimalDistance(options: BakeOptions, index: number = 0, margin: number = 0.05): Promise<number> {
     const { distance = 5 } = options;
     const PROBE_RES = 128; 
-    const pixelData = this.capturePixelData({ ...options, resolution: PROBE_RES }, index);
+    const pixelData = this.capturePixelData({ ...options, resolution: PROBE_RES, zoom: options.zoom || 1.0 }, index);
     const bounds = getAlphaBoundingBox(pixelData, PROBE_RES, PROBE_RES);
     const scale = getFittingScale(bounds, margin);
     return distance / scale;
+  }
+
+  public async findGlobalOptimalDistance(options: BakeOptions, margin: number = 0.05): Promise<{ distance: number, aspectRatio: number }> {
+    const { distance = 5, includeTop = false, includeBottom = false } = options;
+    const PROBE_RES = 128;
+    const probeCount = 8;
+    
+    let globalBounds: [number, number, number, number] = [1, 0, 1, 0]; // [minX, maxX, minY, maxY]
+    let foundAny = false;
+
+    // Probe ALL azimuthal angles to find absolute worst-case bounds
+    for (let i = 0; i < options.frameCount; i++) {
+        const pixelData = this.capturePixelData({ ...options, resolution: PROBE_RES, zoom: options.zoom || 1.0, aspectRatio: 1.0 }, i);
+        const bounds = getAlphaBoundingBox(pixelData, PROBE_RES, PROBE_RES);
+        if (bounds[1] > bounds[0] && bounds[3] > bounds[2]) {
+            globalBounds = foundAny ? mergeBounds(globalBounds, bounds) : bounds;
+            foundAny = true;
+        }
+    }
+
+    // Probe Top/Bottom
+    const extraIndices = [];
+    if (includeTop) extraIndices.push(options.frameCount);
+    if (includeBottom) extraIndices.push(options.frameCount + (includeTop ? 1 : 0));
+
+    for (const idx of extraIndices) {
+      const pixelData = this.capturePixelData({ ...options, resolution: PROBE_RES, zoom: options.zoom || 1.0, aspectRatio: 1.0 }, idx);
+      const bounds = getAlphaBoundingBox(pixelData, PROBE_RES, PROBE_RES);
+      if (bounds[1] > bounds[0] && bounds[3] > bounds[2]) {
+        globalBounds = foundAny ? mergeBounds(globalBounds, bounds) : bounds;
+        foundAny = true;
+      }
+    }
+
+    if (!foundAny) return { distance, aspectRatio: 1.0 };
+
+    const [minX, maxX, minY, maxY] = globalBounds;
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+
+    // targetSize (vertical) = 1.0 - margin * 2
+    const targetSize = Math.max(0.01, 1.0 - (margin * 2));
+    
+    // We fit to the VERTICAL dimension primarily
+    const verticalScale = targetSize / contentH;
+    const optimalDistance = distance / verticalScale;
+
+    // Account for margin symmetrically
+    const paddedW = Math.min(1.0, contentW + margin * 2);
+    const paddedH = Math.min(1.0, contentH + margin * 2);
+    const aspectRatio = paddedW / paddedH;
+
+    return { 
+      distance: optimalDistance, 
+      aspectRatio 
+    };
   }
 
   public getRenderer(): THREE.WebGLRenderer {

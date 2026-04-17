@@ -113,8 +113,20 @@ export function getFittingScale(bounds: [number, number, number, number], margin
   if (contentWidth <= 0 || contentHeight <= 0) return 1.0;
 
   // We want the larger dimension to fill (1.0 - margin * 2)
-  const targetSize = 1.0 - (margin * 2);
+  const targetSize = Math.max(0.01, 1.0 - (margin * 2));
   const currentSize = Math.max(contentWidth, contentHeight);
   
   return targetSize / currentSize;
+}
+
+/**
+ * Merges two bounding boxes.
+ */
+export function mergeBounds(a: [number, number, number, number], b: [number, number, number, number]): [number, number, number, number] {
+  return [
+    Math.min(a[0], b[0]),
+    Math.max(a[1], b[1]),
+    Math.min(a[2], b[2]),
+    Math.max(a[3], b[3])
+  ];
 }
