@@ -42,7 +42,11 @@ export class BillboardBackerUI extends EventTarget {
     super();
     this.options = options;
     this.container = options.container;
-    this.baker = new SpriteBaker();
+    
+    // Initialize Renderer first to share it
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.baker = new SpriteBaker(this.renderer);
     
     // Default Parameters
     this.params = {
@@ -50,7 +54,7 @@ export class BillboardBackerUI extends EventTarget {
       frameCount: 16,
       distance: 5,
       elevation: 30,
-      resolution: 256,
+      resolution: 1024,
       padding: 2,
       transparent: true,
       includeTop: false,
@@ -64,7 +68,6 @@ export class BillboardBackerUI extends EventTarget {
     this.initDOM();
     
     // Initialize Three.js Preview
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.previewScene = new THREE.Scene();
     this.previewCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
     this.previewCamera.position.set(5, 5, 5);
@@ -163,14 +166,14 @@ export class BillboardBackerUI extends EventTarget {
         <select class="sbb-input sbb-select-resolution">
           <option value="64">64px</option>
           <option value="128">128px</option>
-          <option value="256" selected>256px</option>
+          <option value="256">256px</option>
           <option value="512">512px</option>
-          <option value="1024">1024px</option>
+          <option value="1024" selected>1024px</option>
         </select>
       </div>
 
       <div class="sbb-control-group">
-        <label class="sbb-label">Padding: <span class="sbb-val-padding">${this.params.padding}</span>px</label>
+        <label class="sbb-label">Padding: <span class="sbb-val-padding">${this.params.padding}</span> px</label>
         <input type="range" class="sbb-input sbb-range-padding" min="0" max="64" step="1" value="${this.params.padding}" />
       </div>
     `;
@@ -185,8 +188,8 @@ export class BillboardBackerUI extends EventTarget {
     this.viewportEl = document.createElement('div');
     this.viewportEl.className = 'sbb-viewport';
     this.viewportEl.innerHTML = `
-      <div style="position: absolute; top: 15px; left: 15px; color: var(--sbb-primary-color); font-size: 0.7rem; font-weight: 600; text-transform: uppercase;">
-        3D Viewport • Live Preview
+      <div class="sbb-viewport-header" style="position: absolute; top: 15px; left: 15px; color: var(--sbb-primary-color); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; z-index: 10;">
+        3D Viewport • Live Preview • <span class="sbb-res-indicator">${this.params.resolution}px</span>
       </div>
     `;
     this.uiContainer.appendChild(this.viewportEl);
@@ -195,19 +198,23 @@ export class BillboardBackerUI extends EventTarget {
     const results = document.createElement('div');
     results.className = 'sbb-panel';
     results.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center">
-        <h2 class="sbb-title" style="font-size:0.9rem">Camera Preview</h2>
-        <span class="sbb-cam-index" style="font-size:0.7rem; color:var(--sbb-text-secondary)">1 / 16</span>
-      </div>
-      <div class="sbb-preview-nav">
-        <button class="sbb-nav-arrow left">&lsaquo;</button>
-        <img class="sbb-preview-image" style="height: 180px; width:100%; object-fit:contain" alt="Preview">
-        <button class="sbb-nav-arrow right">&rsaquo;</button>
+      <div class="sbb-preview-container">
+        <div style="display:flex; justify-content:space-between; align-items:center">
+          <h2 class="sbb-title" style="font-size:0.9rem">Camera Preview</h2>
+          <span class="sbb-cam-index" style="font-size:0.7rem; color:var(--sbb-text-secondary)">1 / 16</span>
+        </div>
+        <div class="sbb-preview-nav">
+          <button class="sbb-nav-arrow left">&lsaquo;</button>
+          <img class="sbb-preview-image" alt="Preview">
+          <button class="sbb-nav-arrow right">&rsaquo;</button>
+        </div>
       </div>
 
-      <h2 class="sbb-title" style="font-size:0.9rem; margin-top:1rem">Generated Sheet</h2>
-      <div style="flex:1; display:flex; flex-direction:column; gap:0.5rem">
-        <img class="sbb-baked-image" alt="Output">
+      <div class="sbb-baked-image-container">
+        <h2 class="sbb-title" style="font-size:0.9rem">Generated Sheet</h2>
+        <div class="sbb-baked-image-scroll">
+          <img class="sbb-baked-image" alt="Output">
+        </div>
         <button class="sbb-button sbb-download-btn" style="display:none">Download PNG</button>
       </div>
     `;
@@ -357,6 +364,7 @@ export class BillboardBackerUI extends EventTarget {
       console.error('Auto distance failed', err);
     } finally {
       this.setLoading(this.viewportOverlay, false);
+      this.handleResize();
     }
   }
 
@@ -394,6 +402,9 @@ export class BillboardBackerUI extends EventTarget {
     }
 
     this.updateControlsUI();
+    const resInd = this.uiContainer.querySelector('.sbb-res-indicator');
+    if (resInd) resInd.textContent = `${this.params.resolution}px`;
+    
     this.refreshSighting();
     this.dispatchEvent(new CustomEvent('change', { detail: this.params }));
   }
@@ -527,6 +538,7 @@ export class BillboardBackerUI extends EventTarget {
         console.error('Sighting failed', err);
       } finally {
         this.setLoading(this.previewOverlay, false);
+        this.handleResize();
       }
     }, 150);
   }
@@ -549,6 +561,7 @@ export class BillboardBackerUI extends EventTarget {
       
       this.dispatchEvent(new CustomEvent('bake-complete', { detail: { dataUrl } }));
       if (this.options.onBakeComplete) this.options.onBakeComplete(dataUrl);
+      
       return dataUrl;
     } catch (err) {
       console.error('Bake failed', err);
@@ -558,6 +571,7 @@ export class BillboardBackerUI extends EventTarget {
       this.bakeBtn.innerText = 'BAKE SPRITES';
       this.bakeBtn.disabled = false;
       this.setLoading(this.previewOverlay, false);
+      this.handleResize();
     }
   }
 
@@ -573,9 +587,13 @@ export class BillboardBackerUI extends EventTarget {
   }
 
   private handleResize() {
+    if (!this.viewportEl) return;
     const w = this.viewportEl.clientWidth;
     const h = this.viewportEl.clientHeight;
+    if (w === 0 || h === 0) return;
+    
     this.renderer.setSize(w, h);
+    this.renderer.setPixelRatio(window.devicePixelRatio);
     this.previewCamera.aspect = w / h;
     this.previewCamera.updateProjectionMatrix();
   }
@@ -583,23 +601,58 @@ export class BillboardBackerUI extends EventTarget {
   public dispose() {
     cancelAnimationFrame(this.animationId);
     window.removeEventListener('resize', this.handleResize);
-    this.renderer.dispose();
-    if (this.uiContainer.parentElement) {
+    
+    // Dispose baker (it will not dispose shared renderer)
+    if (this.baker) this.baker.dispose();
+    
+    // Thorough cleanup of the preview scene
+    if (this.previewScene) {
+      groupDispose(this.previewScene);
+    }
+
+    // Controls disposal
+    if (this.previewControls) this.previewControls.dispose();
+
+    // Finally dispose renderer
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer.forceContextLoss();
+    }
+    
+    if (this.uiContainer && this.uiContainer.parentElement) {
       this.uiContainer.parentElement.removeChild(this.uiContainer);
     }
   }
 }
 
 function groupDispose(obj: THREE.Object3D) {
-  obj.children.forEach(child => {
-    if ((child as any).geometry) (child as any).geometry.dispose();
-    if ((child as any).material) {
-      if (Array.isArray((child as any).material)) {
-        (child as any).material.forEach((m: any) => m.dispose());
-      } else {
-        (child as any).material.dispose();
-      }
+  // Dispose children recursively
+  if (obj.children) {
+    for (let i = obj.children.length - 1; i >= 0; i--) {
+      groupDispose(obj.children[i]);
     }
-    groupDispose(child);
-  });
+  }
+
+  // Dispose geometry
+  if ((obj as any).geometry) {
+    (obj as any).geometry.dispose();
+  }
+
+  // Dispose materials and textures
+  if ((obj as any).material) {
+    const materials = Array.isArray((obj as any).material) 
+      ? (obj as any).material 
+      : [(obj as any).material];
+
+    materials.forEach((mat: THREE.Material) => {
+      // Iterate over all properties of the material to find textures
+      Object.keys(mat).forEach(key => {
+        const prop = (mat as any)[key];
+        if (prop && prop.isTexture) {
+          prop.dispose();
+        }
+      });
+      mat.dispose();
+    });
+  }
 }

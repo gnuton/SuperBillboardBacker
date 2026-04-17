@@ -5,10 +5,11 @@ A sophisticated TypeScript library and interactive tool designed for game artist
 ## Features
 - **Orbital Capture**: Define distance, elevation, and number of frames.
 - **Three.js Integration**: Seamlessly loads GLTF, GLB, and OBJ formats.
-- **High-Resolution Baking**: Captures frames to a stitched sprite sheet.
-- **Interactive Preview**: Real-time visualization of capture orbits and camera positions.
+- **High-Resolution Baking**: Captures frames to a stitched sprite sheet with pixel-perfect accuracy.
+- **Visual Fidelity**: Sharp, pixelated rendering for low-resolution previews (no more blur).
+- **Interactive Preview**: Real-time visualization of capture orbits and camera positions using a high-performance shared renderer.
 - **Embeddable UI**: A full-featured, framework-agnostic UI class ready to be dropped into any `div`.
-- **Developer Friendly**: Written in modern TypeScript with full ESM support.
+- **Automatic Fit**: "Auto Distance" analysis that perfectly frames your model to minimize empty space.
 
 ## Demo
 Check out the interactive tool: [this is the demo](https://gnuton.github.io/SuperBillboardBacker/)
