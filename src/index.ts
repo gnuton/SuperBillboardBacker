@@ -19,7 +19,9 @@ export interface BakeOptions {
   aspectRatio?: number; // width / height (default 1.0)
   isAutoAspect?: boolean;
   isGrounded?: boolean;
+  isIndependentGrounded?: boolean;
   verticalOffset?: number; // Internal or manual vertical shift
+  frameOffsets?: number[]; // Per-frame vertical shifts
   onProgress?: (ratio: number) => void;
 }
 
@@ -135,8 +137,12 @@ export class SpriteBaker {
         const row = Math.floor(i / cols);
 
         const renderTarget = center.clone();
-        if (options.verticalOffset) {
-          renderTarget.y += options.verticalOffset;
+        let currentVOffset = options.verticalOffset || 0;
+        if (options.isIndependentGrounded && options.frameOffsets) {
+          currentVOffset = options.frameOffsets[i] ?? currentVOffset;
+        }
+        if (currentVOffset !== 0) {
+          renderTarget.y += currentVOffset;
         }
 
         this.camera.lookAt(renderTarget);
@@ -312,11 +318,12 @@ export class SpriteBaker {
   public async findGlobalOptimalDistance(
     options: BakeOptions,
     margin: number = 0.05
-  ): Promise<{ distance: number; aspectRatio: number; verticalOffset: number }> {
+  ): Promise<{ distance: number; aspectRatio: number; verticalOffset: number; frameOffsets: number[] }> {
     const { distance = 5, includeTop = false, includeBottom = false } = options;
     const PROBE_RES = 128;
     let globalBounds: [number, number, number, number] = [1, 0, 1, 0]; // [minX, maxX, minY, maxY]
     let foundAny = false;
+    const allBounds: ([number, number, number, number] | null)[] = [];
 
     // Probe ALL azimuthal angles to find absolute worst-case bounds
     for (let i = 0; i < options.frameCount; i++) {
@@ -328,6 +335,9 @@ export class SpriteBaker {
       if (bounds[1] > bounds[0] && bounds[3] > bounds[2]) {
         globalBounds = foundAny ? mergeBounds(globalBounds, bounds) : bounds;
         foundAny = true;
+        allBounds.push(bounds);
+      } else {
+        allBounds.push(null);
       }
     }
 
@@ -345,10 +355,13 @@ export class SpriteBaker {
       if (bounds[1] > bounds[0] && bounds[3] > bounds[2]) {
         globalBounds = foundAny ? mergeBounds(globalBounds, bounds) : bounds;
         foundAny = true;
+        allBounds.push(bounds);
+      } else {
+        allBounds.push(null);
       }
     }
 
-    if (!foundAny) return { distance, aspectRatio: 1.0, verticalOffset: 0 };
+    if (!foundAny) return { distance, aspectRatio: 1.0, verticalOffset: 0, frameOffsets: [] };
 
     const [minX, maxX, minY, maxY] = globalBounds;
     const contentW = maxX - minX;
@@ -368,13 +381,19 @@ export class SpriteBaker {
 
     let verticalOffset = 0;
     if (options.isGrounded) {
-      verticalOffset = calculateGroundingOffset(globalBounds, optimalDistance, 45, margin);
+      // Bounds were measured at 'distance', so we must use that for world shift calculation
+      verticalOffset = calculateGroundingOffset(globalBounds, distance, 45, margin);
     }
+
+    const frameOffsets = allBounds.map((b) =>
+      b ? calculateGroundingOffset(b, distance, 45, margin) : 0
+    );
 
     return {
       distance: optimalDistance,
       aspectRatio,
-      verticalOffset
+      verticalOffset,
+      frameOffsets
     };
   }
 

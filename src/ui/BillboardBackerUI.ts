@@ -77,7 +77,9 @@ export class BillboardBackerUI extends EventTarget {
       aspectRatio: 1.0,
       isAutoAspect: true,
       isGrounded: true,
+      isIndependentGrounded: false,
       verticalOffset: 0,
+      frameOffsets: [],
       ...options.initialParams
     };
 
@@ -167,6 +169,11 @@ export class BillboardBackerUI extends EventTarget {
         <label class="sbb-label" style="text-transform:none">
           <input type="checkbox" class="sbb-check-grounded" ${this.params.isGrounded ? 'checked' : ''}> Grounded
         </label>
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.2rem; margin-left: 1rem; flex-direction: column;">
+          <label class="sbb-check-independent-group" style="display:${this.params.isGrounded ? 'flex' : 'none'}; align-items:center; gap:0.2rem; font-size:0.75rem; color:var(--sbb-text-secondary); text-transform:none; cursor:pointer">
+            <input type="checkbox" class="sbb-check-independent-grounded" ${this.params.isIndependentGrounded ? 'checked' : ''}> Independent Per Frame
+          </label>
+        </div>
         <div class="sbb-help-text">Aligns object bottom with frame edge.</div>
       </div>
 
@@ -247,9 +254,11 @@ export class BillboardBackerUI extends EventTarget {
         </div>
         <div class="sbb-preview-nav">
           <button class="sbb-nav-arrow left">&lsaquo;</button>
-          <img class="sbb-preview-image" alt="Preview">
-          <div class="sbb-ground-indicator" style="display:none">
-            <span class="sbb-ground-label">ground</span>
+          <div class="sbb-preview-wrapper">
+            <img class="sbb-preview-image" alt="Preview">
+            <div class="sbb-ground-indicator" style="display:none">
+              <span class="sbb-ground-label">ground</span>
+            </div>
           </div>
           <button class="sbb-nav-arrow right">&rsaquo;</button>
         </div>
@@ -315,6 +324,11 @@ export class BillboardBackerUI extends EventTarget {
     listen('.sbb-check-grounded', 'change', (e: Event) => {
       const target = e.target as HTMLInputElement;
       this.setParams({ isGrounded: target.checked });
+    });
+
+    listen('.sbb-check-independent-grounded', 'change', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ isIndependentGrounded: target.checked });
     });
 
     listen('.sbb-range-margin', 'input', (e: Event) => {
@@ -502,7 +516,7 @@ export class BillboardBackerUI extends EventTarget {
       if (this.params.isAutoDistance) this.updateAutoDistance();
     }
 
-    if (this.params.isAutoDistance && (params.margin !== undefined || params.elevation !== undefined || params.isGrounded !== undefined)) {
+    if (this.params.isAutoDistance && (params.margin !== undefined || params.elevation !== undefined || params.isGrounded !== undefined || params.isIndependentGrounded !== undefined)) {
       this.updateAutoDistance();
     }
 
@@ -582,14 +596,23 @@ export class BillboardBackerUI extends EventTarget {
     if (this.groundIndicator) {
       if (this.params.isGrounded) {
         this.groundIndicator.style.display = 'block';
-        // Position it based on margin. 
-        // Note: This assumes the preview image fills the container height or we are in "contained" mode.
-        // For 'contain', it's better to show it relative to the container for now.
-        this.groundIndicator.style.bottom = `${this.params.margin * 100}%`;
+        let vOffset = this.params.verticalOffset || 0;
+        if (this.params.isIndependentGrounded && this.params.frameOffsets) {
+          vOffset = this.params.frameOffsets[this.currentCameraIndex] ?? vOffset;
+        }
+
+        // Position it based on margin + calculated offset.
+        // The red line represents the 'floor'. 
+        // We know calculateGroundingOffset aims for 1.0 - margin.
+        this.groundIndicator.style.bottom = `${this['params'].margin * 100}%`;
       } else {
         this.groundIndicator.style.display = 'none';
       }
     }
+
+    const independentGroup = this.uiContainer.querySelector('.sbb-check-independent-group') as HTMLElement;
+    if (independentGroup) independentGroup.style.display = this.params.isGrounded ? 'flex' : 'none';
+    setVal('.sbb-check-independent-grounded', this.params.isIndependentGrounded);
 
     const aspectGroup = this.uiContainer.querySelector('.sbb-aspect-manual') as HTMLElement;
     if (aspectGroup) aspectGroup.style.display = this.params.isAutoAspect ? 'none' : 'block';
@@ -667,8 +690,12 @@ export class BillboardBackerUI extends EventTarget {
         child.position.set(center.x, center.y - this.params.distance, center.z);
       }
       const renderTarget = center.clone();
-      if (this.params.verticalOffset) {
-        renderTarget.y += this.params.verticalOffset;
+      let vOffset = this.params.verticalOffset || 0;
+      if (this.params.isIndependentGrounded && this.params.frameOffsets) {
+        vOffset = this.params.frameOffsets[i] ?? vOffset;
+      }
+      if (vOffset !== 0) {
+        renderTarget.y += vOffset;
       }
       child.lookAt(renderTarget);
 
@@ -690,11 +717,20 @@ export class BillboardBackerUI extends EventTarget {
         const url = await this.baker.captureFrame(
           {
             ...this.params,
-            model: this.previewModel!.clone()
+            model: this.previewModel!.clone(),
+            verticalOffset: (this.params.isIndependentGrounded && this.params.frameOffsets)
+              ? this.params.frameOffsets[this.currentCameraIndex]
+              : this.params.verticalOffset
           },
           this.currentCameraIndex
         );
         this.previewImageEl.src = url;
+
+        // Update wrapper aspect ratio to match content
+        const wrapper = this.uiContainer.querySelector('.sbb-preview-wrapper') as HTMLElement;
+        if (wrapper && this.params.aspectRatio) {
+          wrapper.style.aspectRatio = `${this.params.aspectRatio}`;
+        }
       } catch (err) {
         console.error('Sighting failed', err);
       } finally {
