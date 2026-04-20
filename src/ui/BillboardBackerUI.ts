@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { SpriteBaker, BakeOptions } from '../index.js';
-import { calculateAutoDistance } from '../math.js';
 
 export interface BillboardBackerUIOptions {
   container: HTMLElement;
@@ -16,8 +15,8 @@ export class BillboardBackerUI extends EventTarget {
   private container: HTMLElement;
   private baker: SpriteBaker;
   private options: BillboardBackerUIOptions;
-  private params: Required<BakeOptions>;
-  
+  private params: Required<Omit<BakeOptions, 'onProgress'>> & { onProgress?: BakeOptions['onProgress'] };
+
   // DOM Elements
   private uiContainer!: HTMLDivElement;
   private viewportEl!: HTMLDivElement;
@@ -26,6 +25,7 @@ export class BillboardBackerUI extends EventTarget {
   private bakeBtn!: HTMLButtonElement;
   private viewportOverlay!: HTMLDivElement;
   private previewOverlay!: HTMLDivElement;
+  private groundIndicator!: HTMLDivElement;
   private currentCameraIndex: number = 0;
 
   // Three.js Preview
@@ -38,17 +38,28 @@ export class BillboardBackerUI extends EventTarget {
 
   private markersGroup: THREE.Group;
   private animationId: number = 0;
+  private currentModelUrl: string | null = null;
 
   constructor(options: BillboardBackerUIOptions) {
     super();
     this.options = options;
     this.container = options.container;
-    
+
     // Initialize Renderer first to share it
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.baker = new SpriteBaker(this.renderer);
-    
+
+    // Propagate context events
+    this.baker.onContextLost = () => {
+      this.dispatchEvent(new CustomEvent('contextlost'));
+    };
+    this.baker.onContextRestored = () => {
+      this.dispatchEvent(new CustomEvent('contextrestored'));
+      this.handleResize();
+      this.refreshSighting();
+    };
+
     // Default Parameters
     this.params = {
       model: '',
@@ -65,17 +76,19 @@ export class BillboardBackerUI extends EventTarget {
       zoom: 1.0,
       aspectRatio: 1.0,
       isAutoAspect: true,
+      isGrounded: true,
+      verticalOffset: 0,
       ...options.initialParams
     };
 
     // Initialize UI
     this.initDOM();
-    
+
     // Initialize Three.js Preview
     this.previewScene = new THREE.Scene();
     this.previewCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
     this.previewCamera.position.set(5, 5, 5);
-    
+
     this.viewportEl.appendChild(this.renderer.domElement);
     this.previewControls = new OrbitControls(this.previewCamera, this.renderer.domElement);
     this.previewControls.enableDamping = true;
@@ -94,8 +107,6 @@ export class BillboardBackerUI extends EventTarget {
     this.orbitRing.rotation.x = Math.PI / 2;
     this.previewScene.add(this.orbitRing);
 
-
-
     this.markersGroup = new THREE.Group();
     this.previewScene.add(this.markersGroup);
 
@@ -110,7 +121,7 @@ export class BillboardBackerUI extends EventTarget {
 
     if (options.theme) this.setTheme(options.theme);
     if (options.initialModel) this.loadModel(options.initialModel);
-    
+
     this.updateMarkers();
     this.updateControlsUI();
   }
@@ -150,6 +161,13 @@ export class BillboardBackerUI extends EventTarget {
           <input type="checkbox" class="sbb-check-auto" ${this.params.isAutoDistance ? 'checked' : ''}> Auto Distance (Visual Fit)
         </label>
         <div class="sbb-help-text">Analyzes frame to minimize empty space.</div>
+      </div>
+
+      <div class="sbb-control-group">
+        <label class="sbb-label" style="text-transform:none">
+          <input type="checkbox" class="sbb-check-grounded" ${this.params.isGrounded ? 'checked' : ''}> Grounded
+        </label>
+        <div class="sbb-help-text">Aligns object bottom with frame edge.</div>
       </div>
 
       <div class="sbb-control-group sbb-margin-group" style="display: ${this.params.isAutoDistance ? 'block' : 'none'}">
@@ -230,6 +248,9 @@ export class BillboardBackerUI extends EventTarget {
         <div class="sbb-preview-nav">
           <button class="sbb-nav-arrow left">&lsaquo;</button>
           <img class="sbb-preview-image" alt="Preview">
+          <div class="sbb-ground-indicator" style="display:none">
+            <span class="sbb-ground-label">ground</span>
+          </div>
           <button class="sbb-nav-arrow right">&rsaquo;</button>
         </div>
       </div>
@@ -253,6 +274,7 @@ export class BillboardBackerUI extends EventTarget {
     this.previewOverlay = this.createOverlay('Capturing...');
     const previewNav = results.querySelector('.sbb-preview-nav') as HTMLElement;
     previewNav.appendChild(this.previewOverlay);
+    this.groundIndicator = results.querySelector('.sbb-ground-indicator') as HTMLDivElement;
 
     this.uiContainer.appendChild(results);
 
@@ -261,59 +283,78 @@ export class BillboardBackerUI extends EventTarget {
   }
 
   private setupEvents() {
-    const listen = (sel: string, event: string, cb: any) => this.uiContainer.querySelector(sel)?.addEventListener(event, cb);
-    
-    listen('.sbb-file-input', 'change', (e: any) => {
-      const file = e.target.files?.[0];
+    const listen = (sel: string, event: string, cb: (e: Event) => void) =>
+      this.uiContainer.querySelector(sel)?.addEventListener(event, cb);
+
+    listen('.sbb-file-input', 'change', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
       if (file) this.loadModel(file);
     });
 
-    listen('.sbb-range-frameCount', 'input', (e: any) => {
-      this.setParams({ frameCount: parseInt(e.target.value) });
+    listen('.sbb-range-frameCount', 'input', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ frameCount: parseInt(target.value) });
     });
 
-    listen('.sbb-check-top', 'change', (e: any) => {
-      this.setParams({ includeTop: e.target.checked });
+    listen('.sbb-check-top', 'change', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ includeTop: target.checked });
     });
 
-    listen('.sbb-check-bottom', 'change', (e: any) => {
-      this.setParams({ includeBottom: e.target.checked });
+    listen('.sbb-check-bottom', 'change', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ includeBottom: target.checked });
     });
 
-    listen('.sbb-check-auto', 'change', (e: any) => {
-      this.setParams({ isAutoDistance: e.target.checked });
+    listen('.sbb-check-auto', 'change', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ isAutoDistance: target.checked });
     });
 
-    listen('.sbb-range-margin', 'input', (e: any) => {
-      this.setParams({ margin: parseFloat(e.target.value) });
+    listen('.sbb-check-grounded', 'change', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ isGrounded: target.checked });
     });
 
-    listen('.sbb-range-distance', 'input', (e: any) => {
-      this.setParams({ distance: parseFloat(e.target.value) });
+    listen('.sbb-range-margin', 'input', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ margin: parseFloat(target.value) });
     });
 
-    listen('.sbb-range-elevation', 'input', (e: any) => {
-      this.setParams({ elevation: parseInt(e.target.value) });
+    listen('.sbb-range-distance', 'input', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ distance: parseFloat(target.value) });
     });
 
-    listen('.sbb-select-resolution', 'change', (e: any) => {
-      this.setParams({ resolution: parseInt(e.target.value) });
+    listen('.sbb-range-elevation', 'input', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ elevation: parseInt(target.value) });
     });
 
-    listen('.sbb-range-padding', 'input', (e: any) => {
-      this.setParams({ padding: parseInt(e.target.value) });
+    listen('.sbb-select-resolution', 'change', (e: Event) => {
+      const target = e.target as HTMLSelectElement;
+      this.setParams({ resolution: parseInt(target.value) });
     });
 
-    listen('.sbb-range-zoom', 'input', (e: any) => {
-      this.setParams({ zoom: parseFloat(e.target.value) });
+    listen('.sbb-range-padding', 'input', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ padding: parseInt(target.value) });
     });
 
-    listen('.sbb-check-auto-aspect', 'change', (e: any) => {
-      this.setParams({ isAutoAspect: e.target.checked });
+    listen('.sbb-range-zoom', 'input', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ zoom: parseFloat(target.value) });
     });
 
-    listen('.sbb-range-aspectRatio', 'input', (e: any) => {
-      this.setParams({ aspectRatio: parseFloat(e.target.value) });
+    listen('.sbb-check-auto-aspect', 'change', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ isAutoAspect: target.checked });
+    });
+
+    listen('.sbb-range-aspectRatio', 'input', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      this.setParams({ aspectRatio: parseFloat(target.value) });
     });
 
     listen('.sbb-nav-arrow.left', 'click', () => {
@@ -356,9 +397,17 @@ export class BillboardBackerUI extends EventTarget {
       return;
     }
 
+    if (this.currentModelUrl) {
+      URL.revokeObjectURL(this.currentModelUrl);
+      this.currentModelUrl = null;
+    }
+
     const url = typeof model === 'string' ? model : URL.createObjectURL(model);
+    if (model instanceof File) {
+      this.currentModelUrl = url;
+    }
     const loader = new GLTFLoader();
-    
+
     try {
       const gltf = await loader.loadAsync(url);
       this.setPreviewModel(gltf.scene);
@@ -373,31 +422,43 @@ export class BillboardBackerUI extends EventTarget {
     this.previewModel = model;
     this.previewScene.add(model);
     this.bakeBtn.disabled = false;
-    
+
     if (this.params.isAutoDistance) {
       this.updateAutoDistance();
     }
     this.updateControlsUI();
     this.updateMarkers();
     this.refreshSighting();
-    this.dispatchEvent(new CustomEvent('change', { detail: { type: 'model', model } }));
+    this.dispatchEvent(
+      new CustomEvent('change', {
+        detail: {
+          ...this.params,
+          _eventSource: 'model_load'
+        }
+      })
+    );
   }
 
   private async updateAutoDistance() {
     if (!this.previewModel || !this.params.isAutoDistance) return;
-    
+
     this.setLoading(this.viewportOverlay, true, 'Analyzing Layout...');
-    
+
     try {
-      const { distance, aspectRatio } = await this.baker.findGlobalOptimalDistance({
-        ...this.params,
-        model: this.previewModel.clone()
-      }, this.params.margin);
-      
+      const { distance, aspectRatio, verticalOffset } = await this.baker.findGlobalOptimalDistance(
+        {
+          ...this.params,
+          model: this.previewModel.clone()
+        },
+        this.params.margin
+      );
+
       this.params.distance = distance;
+      this.params.verticalOffset = verticalOffset;
       if (this.params.isAutoAspect) {
         this.params.aspectRatio = aspectRatio;
       }
+      this.params.verticalOffset = (distance !== undefined) ? (arguments[0] as any).verticalOffset : 0; // Wait, findGlobalOptimalDistance returns it
       this.updateControlsUI();
     } catch (err) {
       console.error('Auto distance failed', err);
@@ -429,9 +490,9 @@ export class BillboardBackerUI extends EventTarget {
     }
   }
 
-  public setParams(params: Partial<BakeOptions>) {
+  public setParams(params: Partial<BakeOptions>, options: { silent?: boolean } = {}) {
     Object.assign(this.params, params);
-    
+
     if (params.frameCount !== undefined || params.includeTop !== undefined || params.includeBottom !== undefined) {
       this.updateMarkers();
       if (this.currentCameraIndex >= this.getTotalFrames()) {
@@ -441,7 +502,7 @@ export class BillboardBackerUI extends EventTarget {
       if (this.params.isAutoDistance) this.updateAutoDistance();
     }
 
-    if (this.params.isAutoDistance && (params.margin !== undefined || params.elevation !== undefined)) {
+    if (this.params.isAutoDistance && (params.margin !== undefined || params.elevation !== undefined || params.isGrounded !== undefined)) {
       this.updateAutoDistance();
     }
 
@@ -451,10 +512,20 @@ export class BillboardBackerUI extends EventTarget {
       const w = Math.round(this.params.resolution * this.params.aspectRatio);
       resInd.textContent = `${w} x ${this.params.resolution}px`;
     }
-    
+
     if (params.isAutoAspect === true) this.updateAutoDistance();
     this.refreshSighting();
-    this.dispatchEvent(new CustomEvent('change', { detail: this.params }));
+
+    if (!options.silent) {
+      this.dispatchEvent(
+        new CustomEvent('change', {
+          detail: {
+            ...this.params,
+            _eventSource: 'params_update'
+          }
+        })
+      );
+    }
   }
 
   public getParams(): BakeOptions {
@@ -462,32 +533,38 @@ export class BillboardBackerUI extends EventTarget {
   }
 
   private updateControlsUI() {
-    const setVal = (sel: string, val: any) => {
+    const setVal = (sel: string, val: string | number | boolean | undefined | null) => {
       const el = this.uiContainer.querySelector(sel);
-      if (el) (el as any).value = val;
+      if (el && val !== undefined && val !== null) (el as HTMLInputElement | HTMLSelectElement).value = val.toString();
     };
-    const setText = (sel: string, text: any) => {
+    const setText = (sel: string, text: string | number | undefined | null) => {
       const el = this.uiContainer.querySelector(sel);
-      if (el) (el as HTMLElement).innerText = text;
+      if (el && text !== undefined && text !== null) (el as HTMLElement).innerText = text.toString();
     };
 
     setVal('.sbb-range-frameCount', this.params.frameCount);
     setText('.sbb-val-frameCount', this.params.frameCount);
-    
+
     setVal('.sbb-range-distance', this.params.distance);
-    setText('.sbb-val-distance', this.params.distance.toFixed(1));
-    
+    if (typeof this.params.distance === 'number') {
+      setText('.sbb-val-distance', this.params.distance.toFixed(1));
+    }
+
     setVal('.sbb-range-elevation', this.params.elevation);
     setText('.sbb-val-elevation', this.params.elevation);
-    
+
     setVal('.sbb-range-padding', this.params.padding);
     setText('.sbb-val-padding', this.params.padding);
 
     setVal('.sbb-range-margin', this.params.margin);
-    setText('.sbb-val-margin', Math.round(this.params.margin * 100));
+    if (typeof this.params.margin === 'number') {
+      setText('.sbb-val-margin', Math.round(this.params.margin * 100));
+    }
 
     setVal('.sbb-range-zoom', this.params.zoom);
-    setText('.sbb-val-zoom', Math.round(this.params.zoom * 100));
+    if (typeof this.params.zoom === 'number') {
+      setText('.sbb-val-zoom', Math.round(this.params.zoom * 100));
+    }
 
     const marginGroup = this.uiContainer.querySelector('.sbb-margin-group') as HTMLElement;
     if (marginGroup) marginGroup.style.display = this.params.isAutoDistance ? 'block' : 'none';
@@ -496,7 +573,23 @@ export class BillboardBackerUI extends EventTarget {
     if (distGroup) distGroup.style.display = this.params.isAutoDistance ? 'none' : 'block';
 
     setVal('.sbb-range-aspectRatio', this.params.aspectRatio);
-    setText('.sbb-val-aspectRatio', this.params.aspectRatio.toFixed(2));
+    if (typeof this.params.aspectRatio === 'number') {
+      setText('.sbb-val-aspectRatio', this.params.aspectRatio.toFixed(2));
+    }
+
+    setVal('.sbb-check-grounded', this.params.isGrounded);
+
+    if (this.groundIndicator) {
+      if (this.params.isGrounded) {
+        this.groundIndicator.style.display = 'block';
+        // Position it based on margin. 
+        // Note: This assumes the preview image fills the container height or we are in "contained" mode.
+        // For 'contain', it's better to show it relative to the container for now.
+        this.groundIndicator.style.bottom = `${this.params.margin * 100}%`;
+      } else {
+        this.groundIndicator.style.display = 'none';
+      }
+    }
 
     const aspectGroup = this.uiContainer.querySelector('.sbb-aspect-manual') as HTMLElement;
     if (aspectGroup) aspectGroup.style.display = this.params.isAutoAspect ? 'none' : 'block';
@@ -517,18 +610,22 @@ export class BillboardBackerUI extends EventTarget {
 
     for (let i = 0; i < total; i++) {
       const marker = new THREE.Mesh(markerGeom, new THREE.MeshBasicMaterial({ color: 0xffffff }));
-      
+
       // Number label sprite
       const canvas = document.createElement('canvas');
-      canvas.width = 64; canvas.height = 64;
+      canvas.width = 64;
+      canvas.height = 64;
       const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = 'white'; ctx.font = 'Bold 40px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'white';
+      ctx.font = 'Bold 40px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.fillText((i + 1).toString(), 32, 32);
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
       sprite.position.y = 0.3;
       sprite.scale.set(0.4, 0.4, 1);
       marker.add(sprite);
-      
+
       this.markersGroup.add(marker);
     }
   }
@@ -546,12 +643,12 @@ export class BillboardBackerUI extends EventTarget {
     this.markersGroup.visible = true;
     const box = new THREE.Box3().setFromObject(this.previewModel);
     const center = box.getCenter(new THREE.Vector3());
-    
+
     // Update Orbit Ring
     const eRad = THREE.MathUtils.degToRad(this.params.elevation);
     const radiusAtE = this.params.distance * Math.cos(eRad);
     const elevationY = this.params.distance * Math.sin(eRad);
-    
+
     this.orbitRing.position.set(center.x, center.y + elevationY, center.z);
     this.orbitRing.scale.set(radiusAtE, radiusAtE, 1);
 
@@ -569,29 +666,34 @@ export class BillboardBackerUI extends EventTarget {
       } else {
         child.position.set(center.x, center.y - this.params.distance, center.z);
       }
-      child.lookAt(center);
-      
+      const renderTarget = center.clone();
+      if (this.params.verticalOffset) {
+        renderTarget.y += this.params.verticalOffset;
+      }
+      child.lookAt(renderTarget);
+
       // Highlight current
       const mesh = child as THREE.Mesh;
       (mesh.material as THREE.MeshBasicMaterial).color.set(i === this.currentCameraIndex ? 0xff0000 : 0xffffff);
     });
 
-
-
     this.renderer.render(this.previewScene, this.previewCamera);
   }
 
-  private sightingTimer: any = null;
+  private sightingTimer: ReturnType<typeof setTimeout> | null = null;
   private refreshSighting() {
     if (!this.previewModel) return;
-    clearTimeout(this.sightingTimer);
+    if (this.sightingTimer) clearTimeout(this.sightingTimer);
     this.sightingTimer = setTimeout(async () => {
       this.setLoading(this.previewOverlay, true, 'Capturing...');
       try {
-        const url = await this.baker.captureFrame({
-          ...this.params,
-          model: this.previewModel!.clone()
-        }, this.currentCameraIndex);
+        const url = await this.baker.captureFrame(
+          {
+            ...this.params,
+            model: this.previewModel!.clone()
+          },
+          this.currentCameraIndex
+        );
         this.previewImageEl.src = url;
       } catch (err) {
         console.error('Sighting failed', err);
@@ -612,15 +714,18 @@ export class BillboardBackerUI extends EventTarget {
     try {
       const dataUrl = await this.baker.bake({
         ...this.params,
-        model: this.previewModel.clone()
+        model: this.previewModel.clone(),
+        onProgress: (ratio) => {
+          this.dispatchEvent(new CustomEvent('progress', { detail: { ratio } }));
+        }
       });
       this.bakedImageEl.src = dataUrl;
       const downloadBtn = this.uiContainer.querySelector('.sbb-download-btn') as HTMLElement;
       if (downloadBtn) downloadBtn.style.display = 'block';
-      
+
       this.dispatchEvent(new CustomEvent('bake-complete', { detail: { dataUrl } }));
       if (this.options.onBakeComplete) this.options.onBakeComplete(dataUrl);
-      
+
       return dataUrl;
     } catch (err) {
       console.error('Bake failed', err);
@@ -650,7 +755,7 @@ export class BillboardBackerUI extends EventTarget {
     const w = this.viewportEl.clientWidth;
     const h = this.viewportEl.clientHeight;
     if (w === 0 || h === 0) return;
-    
+
     this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.previewCamera.aspect = w / h;
@@ -659,11 +764,16 @@ export class BillboardBackerUI extends EventTarget {
 
   public dispose() {
     cancelAnimationFrame(this.animationId);
+    if (this.sightingTimer) clearTimeout(this.sightingTimer);
     window.removeEventListener('resize', this.handleResize);
-    
+
+    if (this.currentModelUrl) {
+      URL.revokeObjectURL(this.currentModelUrl);
+    }
+
     // Dispose baker (it will not dispose shared renderer)
     if (this.baker) this.baker.dispose();
-    
+
     // Thorough cleanup of the preview scene
     if (this.previewScene) {
       groupDispose(this.previewScene);
@@ -677,7 +787,7 @@ export class BillboardBackerUI extends EventTarget {
       this.renderer.dispose();
       this.renderer.forceContextLoss();
     }
-    
+
     if (this.uiContainer && this.uiContainer.parentElement) {
       this.uiContainer.parentElement.removeChild(this.uiContainer);
     }
@@ -693,22 +803,20 @@ function groupDispose(obj: THREE.Object3D) {
   }
 
   // Dispose geometry
-  if ((obj as any).geometry) {
-    (obj as any).geometry.dispose();
+  if ('geometry' in obj) {
+    (obj.geometry as THREE.BufferGeometry).dispose();
   }
 
   // Dispose materials and textures
-  if ((obj as any).material) {
-    const materials = Array.isArray((obj as any).material) 
-      ? (obj as any).material 
-      : [(obj as any).material];
+  if ('material' in obj) {
+    const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
 
     materials.forEach((mat: THREE.Material) => {
       // Iterate over all properties of the material to find textures
-      Object.keys(mat).forEach(key => {
-        const prop = (mat as any)[key];
-        if (prop && prop.isTexture) {
-          prop.dispose();
+      Object.keys(mat).forEach((key) => {
+        const prop = (mat as unknown as Record<string, unknown>)[key];
+        if (prop && typeof prop === 'object' && 'isTexture' in prop && prop.isTexture) {
+          (prop as THREE.Texture).dispose();
         }
       });
       mat.dispose();

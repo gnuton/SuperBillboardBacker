@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { calculateOrbitalPosition, calculateGrid, calculateAutoDistance, getAlphaBoundingBox, getFittingScale } from './math';
+import {
+  calculateOrbitalPosition,
+  calculateGrid,
+  calculateAutoDistance,
+  getAlphaBoundingBox,
+  getFittingScale,
+  calculateGroundingOffset
+} from './math';
 
 describe('Math Utilities', () => {
   describe('calculateGrid', () => {
@@ -53,15 +60,13 @@ describe('Math Utilities', () => {
     it('should calculate distance for a sphere', () => {
       const geometry = new THREE.SphereGeometry(5);
       const mesh = new THREE.Mesh(geometry);
-      
+
       const distance = calculateAutoDistance(mesh, 45, 1.0);
-      
-      // For a sphere of radius 5, the bounding box is [-5, -5, -5] to [5, 5, 5]
-      // The bounding sphere of THIS BOX has radius sqrt(5^2 + 5^2 + 5^2) = sqrt(75) approx 8.66
+
       const boxRadius = Math.sqrt(3 * (5 * 5));
       const fovRad = (45 * Math.PI) / 180;
       const expectedDist = boxRadius / Math.sin(fovRad / 2);
-      
+
       expect(distance).toBeCloseTo(expectedDist);
     });
   });
@@ -69,7 +74,6 @@ describe('Math Utilities', () => {
   describe('Alpha Detection', () => {
     it('should find bounding box of a simple square', () => {
       const pixels = new Uint8Array(16 * 16 * 4);
-      // Fill a 4x4 square in the middle (from 6,6 to 9,9)
       for (let y = 6; y <= 9; y++) {
         for (let x = 6; x <= 9; x++) {
           pixels[(y * 16 + x) * 4 + 3] = 255;
@@ -84,15 +88,28 @@ describe('Math Utilities', () => {
     });
 
     it('should calculate correct fitting scale', () => {
-      // Bounds cover 30% of the screen (0.6 - 0.3)
       const bounds: [number, number, number, number] = [0.3, 0.6, 0.3, 0.6];
       const margin = 0.1;
       const scale = getFittingScale(bounds, margin);
-      
-      // targetSize = 1.0 - 0.2 = 0.8
-      // currentSize = 0.3
-      // scale = 0.8 / 0.3 = 2.666...
-      expect(scale).toBeCloseTo(8/3);
+
+      expect(scale).toBeCloseTo(8 / 3);
+    });
+  });
+
+  describe('calculateGroundingOffset', () => {
+    it('should calculate correct world offset for grounding', () => {
+      const bounds: [number, number, number, number] = [0, 1, 0, 0.8];
+      const distance = 10;
+      const fov = 45;
+      const margin = 0.1;
+
+      const offset = calculateGroundingOffset(bounds, distance, fov, margin);
+
+      const fovRad = (45 * Math.PI) / 180;
+      const viewportHeight = 2 * distance * Math.tan(fovRad / 2);
+      const expectedOffset = 0.1 * viewportHeight;
+
+      expect(offset).toBeCloseTo(expectedOffset);
     });
   });
 });
